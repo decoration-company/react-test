@@ -12,6 +12,7 @@ import {
 import {
   PIXEL_9A_CASE_CLIP_PATH_BOUNDS,
   PIXEL_9A_CASE_CLIP_PATH_D,
+  PIXEL_9A_CASE_OUTER_PATH_D,
 } from './constants'
 import {
   clampImageScale,
@@ -407,49 +408,29 @@ export function Pixel9aCaseMaskPreview() {
             >
               <feDropShadow
                 in="SourceAlpha"
-                dx="-2"
-                dy="-2"
-                stdDeviation="12"
+                dx="0"
+                dy="4"
+                stdDeviation="10"
                 floodColor="#000000"
-                floodOpacity="0.06"
+                floodOpacity="0.10"
                 result="ambient"
               />
               <feDropShadow
                 in="SourceAlpha"
-                dx="3"
-                dy="6"
-                stdDeviation="8"
-                floodColor="#000000"
-                floodOpacity="0.18"
-                result="drop"
-              />
-              <feDropShadow
-                in="SourceAlpha"
                 dx="0"
-                dy="8"
-                stdDeviation="10"
+                dy="10"
+                stdDeviation="14"
                 floodColor="#000000"
-                floodOpacity="0.10"
-                result="base"
-              />
-              <feDropShadow
-                in="SourceAlpha"
-                dx="2"
-                dy="3"
-                stdDeviation="3"
-                floodColor="#000000"
-                floodOpacity="0.15"
-                result="contact"
+                floodOpacity="0.08"
+                result="drop"
               />
               <feMerge>
                 <feMergeNode in="ambient" />
                 <feMergeNode in="drop" />
-                <feMergeNode in="base" />
-                <feMergeNode in="contact" />
               </feMerge>
             </filter>
           </defs>
-          <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#000000" fillRule="evenodd" filter={`url(#${shadowId})`} />
+          <path d={PIXEL_9A_CASE_OUTER_PATH_D} fill="#000000" filter={`url(#${shadowId})`} />
           <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#ffffff" fillRule="evenodd" />
           {imageItem && imageTransform && imageTransformAttr ? (
             <g clipPath={`url(#${clipId})`}>
