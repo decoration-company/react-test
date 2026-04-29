@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -17,6 +18,7 @@ import {
   clientPointToSvgPoint,
   createCoverTransform,
   createImageItemId,
+  createRenderPayload,
   type Pixel9aEditorImageItem,
   type Pixel9aEditorImageTransform,
 } from './transform'
@@ -263,6 +265,7 @@ export function Pixel9aCaseMaskPreview() {
 
   const b = PIXEL_9A_CASE_CLIP_PATH_BOUNDS
   const imageTransform = imageItem?.transform
+  const debugPayload = useMemo(() => imageItem ? createRenderPayload(imageItem) : null, [imageItem])
   const imageTransformAttr = imageTransform
     ? `translate(${imageTransform.centerX} ${imageTransform.centerY}) rotate(${radiansToDegrees(imageTransform.rotationRad)}) scale(${imageTransform.scale})`
     : undefined
@@ -377,6 +380,10 @@ export function Pixel9aCaseMaskPreview() {
           ) : null}
         </svg>
       </div>
+      <details className="pixel9a-case-mask__debug">
+        <summary>payload</summary>
+        <pre>{JSON.stringify(debugPayload, null, 2)}</pre>
+      </details>
     </section>
   )
 }
