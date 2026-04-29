@@ -1,0 +1,356 @@
+# decocom_editor 進め方仕様書
+
+作成日: 2026-04-29
+対象: decocom_editor（Vite + React + TypeScript）
+目的: Shopifyで使えるレベルのMVPまでの設計と段取りを定義する
+
+---
+
+## 1. 全体方針
+
+### 1.1 設計思想
+- **Flutter版（decocom_flutter）のロジックを軸にする**
+- **重い処理（画像合成・印刷用高解像度生成）はサーバー側（decocom_commerce）に集約**
+- **クライアント（Flutter / React）は軽量に保つ**
+- Flutter版とReact版は同じサーバーAPIを叩く前提で設計し、コードの二重実装を避ける
+
+### 1.2 リポジトリ構成
+| リポジトリ | 役割 | 言語/FW |
+|----------|------|--------|
+| decocom_editor | 共通カスタマイズUI（iframe埋め込み用） | Vite + React + TS |
+| decocom_flutter | アプリ版エディタ（既存） | Flutter |
+| decocom_commerce | 包括バックエンド + 画像生成API | FastAPI / Railway |
+| アリシア | 注文・顧客・デザインデータの正本 | Laravel / MySQL |
+
+### 1.3 MVPのスコープ（Shopifyで使えるレベル）
+| 項目 | 状態 |
+|------|------|
+| Pixel 9a SVGマスク表示 | ✅ 完了 |
+| マスク内に画像表示 | ✅ 完了 |
+| 画像の拡大縮小・回転・移動 | ⬜ 今回 |
+| デザイン保存 → decocom_commerce へ送信 | ⬜ 今回 |
+| 印刷用高解像度画像の生成（サーバー側） | ⬜ サーバー側担当 |
+| Shopify Theme App Extensionでiframe埋め込み | ⬜ 後続 |
+| 認証 | ⬜ 後続（要検討） |
+
+### 1.4 スコープ外（今回はやらない）
+- 他デバイス対応（Pixel 9aのみ）
+- スタンプ・テキスト追加
+- レイヤー管理・Undo/Redo
+- ゲスト購入フロー
+- カート連携・購入完了
+
+---
+
+## 2. アーキテクチャ
+
+### 2.1 処理の振り分け方針
+
+| 処理 | クライアント | サーバー |
+|------|------------|---------|
+| SVGマスク描画 | ✅ | ー |
+| 画像のドラッグ・拡大縮小・回転（プレビュー） | ✅ | ー |
+| プレビュー画像生成（Canvas API） | ✅ | ー |
+| 印刷用高解像度画像生成 | ー | ✅ |
+| デザインパラメータの保存 | ー | ✅（decocom_commerce。必要に応じてアリシア既存連携） |
+
+### 2.2 データフロー
+
+```
+[ユーザー] 
+   ↓ 画像アップロード・操作
+[decocom_editor (React)]
+   ↓ デザインパラメータ + 元画像
+[decocom_commerce /api/skia/render]
+   ↓ 印刷用高解像度画像生成（Skia / canvaskit-wasm）
+   ↓ Supabase Storage（または S3）に保存
+   ↓ 画像URL + パラメータ
+[アリシア]
+   ↓ 注文データに紐付け
+[製造工程]
+```
+
+### 2.3 保存データ設計（決め事・要すり合わせ）
+
+**方針**: パラメータ + 元画像URL + 合成済み高解像度画像URL の3点セットで保存する。
+
+**理由**:
+- パラメータだけだと、後から合成ロジックが変わったときに過去の注文を再現できなくなる
+- 合成画像だけだと、再編集ができない
+- 両方持っておけば、再編集も製造もできる
+
+**Flutter版確認後の決定**:
+- Flutter版の `DesignItem` は `topLeftPos` / `size` / `scale` / `angle` を正本にしている
+- `angle` は degree ではなく radian
+- `scale` は画像自然サイズに対する倍率で、初期coverを `1.0` とするモデルではない
+- `scale_alignment` は新規保存では `topLeft` 固定
+- React版MVPも、内部状態と保存payloadは Flutter の `DesignItem` 語彙に寄せる
+
+**保存payload案**（decocom_commerce 側）:
+```json
+{
+  "design_id": "uuid",
+  "device": "pixel-9a",
+  "source_image_url": "https://storage.../uploads/xxx.jpg",
+  "composed_image_url": "https://storage.../composed/xxx.png",
+  "preview_image_url": "https://storage.../preview/xxx.jpg",
+  "design_area": {
+    "width": 207.87,
+    "height": 441.93
+  },
+  "items": [
+    {
+      "id": "uuid",
+      "type": "image",
+      "source_image_url": "https://storage.../uploads/xxx.jpg",
+      "top_left_pos_dx": -20.0,
+      "top_left_pos_dy": 0.0,
+      "size_width": 247.87,
+      "size_height": 441.93,
+      "scale": 1.0,
+      "angle": 0.0,
+      "scale_alignment": "topLeft"
+    }
+  ],
+  "created_at": "2026-04-29T..."
+}
+```
+
+**MVP中のReact内部transform**:
+単画像編集では中心座標のほうがUI実装しやすいため、React内部では `centerX` / `centerY` / `scale` / `rotationRad` を持ってよい。ただし保存・サーバー送信直前に上記の `DesignItem` 形式へ変換する。
+
+```json
+{
+  "center_x": 103.935,
+  "center_y": 220.965,
+  "image_width": 247.87,
+  "image_height": 441.93,
+  "scale": 1.0,
+  "rotation_rad": 0.0
+}
+```
+
+`top_left_pos_dx = center_x - image_width * scale / 2`、`top_left_pos_dy = center_y - image_height * scale / 2` を基本変換にする。回転中心は Flutter版と同じくアイテム中心。
+
+**参考: 当初案（採用しない）**:
+```json
+{
+  "design_id": "uuid",
+  "device": "pixel-9a",
+  "source_image_url": "https://storage.../uploads/xxx.jpg",
+  "composed_image_url": "https://storage.../composed/xxx.png",
+  "transform": {
+    "center_x": 0.5,
+    "center_y": 0.5,
+    "scale": 1.2,
+    "rotation_deg": 0
+  },
+  "viewport": {
+    "width": 574.08,
+    "height": 840.97
+  },
+  "created_at": "2026-04-29T..."
+}
+```
+
+`center_x` / `center_y` 正規化座標だけを正本にすると Flutter版の既存保存モデルとズレるため、正本にはしない。再編集UI用の派生値として扱う。
+
+**transform定義で決めること**:
+- `top_left_pos_dx` / `top_left_pos_dy`: マスク論理座標内における画像左上座標
+- `scale`: Flutter版に合わせ、画像自然サイズに対する倍率
+- `angle`: Flutter版に合わせ、radianで保存
+- `design_area`: React表示サイズではなく、Pixel 9a SVG viewBoxの論理サイズを保存する
+- サーバー合成時はこのtransformを唯一の正本として、React / Flutter / Skiaで同じ見た目になることを目標にする
+
+---
+
+## 3. サーバーAPI設計（要すり合わせ）
+
+### 3.1 `/api/skia/render` リクエスト形式案
+
+```http
+POST /api/skia/render
+Content-Type: application/json
+
+{
+  "device": "pixel-9a",
+  "source_image_url": "https://storage.../uploads/xxx.jpg",
+  "design_area": {
+    "width": 207.87,
+    "height": 441.93
+  },
+  "items": [
+    {
+      "id": "uuid",
+      "type": "image",
+      "source_image_url": "https://storage.../uploads/xxx.jpg",
+      "top_left_pos_dx": -20.0,
+      "top_left_pos_dy": 0.0,
+      "size_width": 247.87,
+      "size_height": 441.93,
+      "scale": 1.0,
+      "angle": 0.0,
+      "scale_alignment": "topLeft"
+    }
+  ]
+}
+```
+
+**レスポンス**:
+```json
+{
+  "design_id": "uuid",
+  "composed_image_url": "https://storage.../composed/xxx.png",
+  "preview_image_url": "https://storage.../preview/xxx.jpg"
+}
+```
+
+### 3.2 画像アップロードAPI（別エンドポイント案）
+
+```http
+POST /api/upload
+Content-Type: multipart/form-data
+
+file: <binary>
+```
+
+**レスポンス**:
+```json
+{
+  "source_image_url": "https://storage.../uploads/xxx.jpg"
+}
+```
+
+### 3.3 Flutter版との共通化
+- Flutter版も将来的に同じエンドポイントを叩く前提で設計
+- リクエスト/レスポンス形式は Flutter の `DesignItem.toMap()` に寄せる
+- `device` は今後の拡張に備えて文字列ID
+- Flutter版の既存アップロードキーは歴史的に `image_local_path` だが、React/commerce APIでは `source_image_url` として扱い、必要ならサーバー側で変換する
+
+### 3.4 Shopify連携時に返す値（先に意識する）
+Theme App Extension対応は後続だが、保存完了後に親ページへ返す最低限の値は先に決めておく。
+
+```ts
+window.parent.postMessage({
+  type: 'decocom:designSaved',
+  design_id: 'uuid',
+  preview_image_url: 'https://storage.../preview/xxx.jpg',
+}, '*')
+```
+
+**要確認**:
+- `line item properties` に入れる値は `design_id` のみにするか、確認用URLも入れるか
+- iframe側で保存完了までカート追加を止めるか、親側で制御するか
+- postMessageのorigin制限を本番ドメインに合わせて設定する
+
+---
+
+## 4. 実装フェーズ（decocom_editor側）
+
+### Phase A: 画像操作機能（1〜2週間）
+**目的**: マスク内で画像を自由に動かせるようにする
+
+- [x] Flutter版のtransform定義を確認
+- [x] React版の保存用transform型を決定
+- [ ] ピンチズーム / マウスホイールで拡大縮小
+- [ ] ドラッグで移動
+- [ ] 2本指 / ボタンで回転
+- [ ] タッチ・マウス両対応
+- [ ] マスク範囲外はクリッピング維持
+- [ ] 現在のtransformをJSONで確認できるデバッグ表示を用意
+
+**技術選定の判断ポイント**:
+- まずは素のSVG + React stateで進める
+- 画像1枚の `transform` だけなら react-konva はまだ不要
+- 複数レイヤー、テキスト、Undo/Redoまで広げる段階で canvas / konva 導入を再判断する
+
+### Phase B: 保存とサーバー連携（並行）
+**目的**: 操作したデザインをサーバーに送って保存
+
+- [ ] 「保存」ボタンでデザインパラメータ収集
+- [ ] 元画像を `/api/upload` に送信 → URL取得
+- [ ] パラメータ + 画像URLを `/api/skia/render` に送信
+- [ ] レスポンスの `composed_image_url` を表示（確認用）
+- [ ] エラーハンドリング
+
+**サーバー側との連携**:
+- API仕様（3.1, 3.2）の合意
+- サーバー側の実装完了タイミングを確認
+- 完了前はモックAPIで進められるようにしておく
+
+### Phase C: Shopify組み込み（後続）
+- Theme App Extensionで iframe 埋め込み
+- postMessage で親ページとの通信
+- line item properties に `design_id` を注入
+- カート追加フロー
+
+### Phase D: 認証（後続）
+- 設計次第。ゲスト購入を許すなら一時トークンでもOK
+- Shopify顧客と紐付けるなら customer access token
+
+---
+
+## 5. 未決事項（次に詰めるべきこと）
+
+| 項目 | 対応 |
+|------|----------|
+| transformの基準（中心座標/左上座標、scale基準、rotation方向） | **決定**: 保存正本は Flutter `DesignItem` 互換の左上座標 + 自然サイズscale + radian。React内部だけ中心座標可 |
+| サーバーAPIのリクエスト/レスポンス形式 | **一次決定**: `design_area` + `items[]` を送る。エンドポイント名と保存先はサーバー側で確定 |
+| 画像ストレージの場所（Supabase / S3 / アリシア直） | **未決**: commerce側で決める。アリシア直保存は避け、URL/ID連携に留める方針 |
+| アリシア側の保存スキーマ | **保留**: Aliciaは読み取り中心。新規スキーマ変更を前提にせず、commerce側の `design_id` を正本にする |
+| 印刷用画像の解像度・形式（最終px、300dpi、塗り足し、透明背景、カラープロファイル） | サーバー側 + 製造現場とすり合わせ |
+| 認証方式 | Shopify組み込み時 |
+| iframe埋め込み時のpostMessage仕様 | Shopify組み込み時 |
+
+---
+
+## 6. Flutter版と見比べて埋める確認事項
+
+decocom_all内のFlutter版を確認して、React版・サーバー版と合わせるべき項目を埋める。
+
+| 確認項目 | Flutterで見た場所/観点 | 決定・方針 |
+|----------|--------------|------------|
+| デバイスID | `pixel_9a_hard_white_inline_frame_clip.dart` の `isPixel9aModelForDesignCaseMask` は model名/alias の `pixel9a` 判定 | React/commerceの外部IDは `pixel-9a` に統一。Flutter接続時は model/alias 判定から `pixel-9a` に正規化 |
+| マスク座標系 | Flutter fallback path は `M367.68...` 系で、React SVGは `Google-Pixel9a.svg` の viewBox `207.87 x 441.93` | React MVPは現行SVG viewBox `207.87 x 441.93` を論理座標にする。サーバーは path bounds を原点化して同じ座標で描く |
+| 初期画像配置 | Flutter背景は `ImageItemWidget` 側の `BoxFit.cover` 相当。Pixel9a previewは `DesignItemLayer` を積むだけ | Reactは選択画像をマスク外接矩形へ cover 初期配置。保存時は cover済みの `size_width/height` と `top_left_pos` に展開し、`scale=1.0` から始める |
+| 移動量 | `DesignItemMoveHandler`: 画面px差分を `designRatio` で割って `topLeftPos` を更新 | ReactもDOM上の表示倍率を逆算して、画面px差分をSVG viewBox座標へ変換する。保存は正規化座標ではなく論理px |
+| ズーム | `DesignItemScaleHandler`: 画像/スタンプは `scale` 更新。下限 `kDesignItemMiniScale`、上限 `kDesignItemMaxScale` | React MVPは `scale` を画像自然サイズ/初期coverサイズへの倍率として保持。min/maxはUIで仮設定し、Flutter定数と体感を合わせる |
+| 回転 | `DesignItemRotateHandler`: `atan2(cross, dot)` の radian を `angle` に保存。回転中心はアイテム中心 | React/commerceも `angle` は radian。画面上で時計回りが正方向に見えるSVG座標系のまま保存し、サーバーで同じ行列順にする |
+| 保存データ | `DesignItem.toMap()`: `top_left_pos_dx/dy`, `angle`, `scale`, `size_width/height`, `design_size_width/height`, `scale_alignment: topLeft` | React APIはこのキー名へ寄せる。単画像MVPでも `items[]` にして後からスタンプ/テキストを足せる形にする |
+| プレビュー生成 | `Pixel9aDesignView` + `PrintImageService.export`。現在はFlutter上のRepaintBoundary書き出し | Reactの画面プレビューはSVGで十分。正本の印刷画像はサーバー合成結果を使い、Flutter書き出しとの差分は目視比較で詰める |
+| 画像アップロード | `DesignItem.toMap()` 内で `designImageUploaderProvider` を使い、保存キーは `image_local_path` | Reactは `/api/upload` で `source_image_url` を受け取る。Flutter互換保存へ入れる場合のみ `image_local_path` へ変換 |
+| エラー処理 | `validateImageFile`: 10MB超過、PNG/JPEG/JPG以外を拒否。失敗時はダイアログ/スナックバー | ReactもMVPで10MB上限、PNG/JPEG/JPGのみ。保存失敗・生成失敗はボタン復帰 + メッセージ表示 |
+| 注文連携 | Pixel9a previewは印刷PNG/サムネイル保存まで。注文連携の正本IDは未確定 | Shopify MVPでは `design_id` を commerce 側で発行し、line item properties にはまず `design_id` のみ入れる。確認用URLは管理/デバッグ用 |
+
+---
+
+## 7. 直近の進め方
+
+### 7.1 editor側で先に作るもの
+- `src/pixel9a` に transform 型と座標変換関数を追加する
+- `Pixel9aCaseMaskPreview` をドラッグ/ホイール/回転ボタン対応にする
+- デバッグ用に現在の `items[]` payload を表示する
+- 画像選択時に自然サイズを読み、マスク外接矩形にcover初期配置する
+- 保存ボタンはモックAPIから始め、payloadの形を先に固定する
+
+### 7.2 commerce側に渡す確認
+- `/api/upload` と `/api/skia/render` を分けるか、renderでmultipartも受けるか
+- `design_area` と `items[]` のpayloadをそのまま保存するか、commerce内の別スキーマに変換するか
+- 生成画像の保存先を Supabase Storage / R2 / S3 のどれにするか
+- Pixel 9aの最終印刷サイズを `item.frameImageWidth` / `item.frameImageHeight` 相当にどう持つか
+
+### 7.3 後回しにするもの
+- Aliciaのスキーマ変更を前提にした実装
+- 複数機種対応
+- スタンプ、テキスト、レイヤー管理
+- Undo/Redo
+- Shopify認証の本設計
+
+## 8. 直近のアクション
+
+1. decocom_editorでPhase A（画像操作）に着手
+2. `items[]` payloadをデバッグ表示しながら、Flutter互換の座標変換を確認
+3. Phase Aと並行して、モックAPIでPhase Bを試作
+4. commerce側API仕様を確定
+5. サーバーAPI実装完了後に本接続へ切り替え
+6. Shopify iframe組み込みへ進む
