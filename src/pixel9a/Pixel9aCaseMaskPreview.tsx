@@ -1,8 +1,25 @@
-import { type ChangeEvent, useCallback, useEffect, useId, useState } from 'react'
+import {
+  type ChangeEvent,
+  type PointerEvent,
+  type WheelEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react'
 import {
   PIXEL_9A_CASE_CLIP_PATH_BOUNDS,
   PIXEL_9A_CASE_CLIP_PATH_D,
 } from './constants'
+import {
+  clampImageScale,
+  clientPointToSvgPoint,
+  createCoverTransform,
+  createImageItemId,
+  type Pixel9aEditorImageItem,
+  type Pixel9aEditorImageTransform,
+} from './transform'
 import './Pixel9aCaseMaskPreview.css'
 
 const PLACEHOLDER_DATA_URL =
@@ -25,10 +42,55 @@ function viewBoxAttr(): string {
   return `${b.left} ${b.top} ${b.width} ${b.height}`
 }
 
+function radiansToDegrees(radians: number): number {
+  return (radians * 180) / Math.PI
+}
+
+function distance(a: DOMPoint, b: DOMPoint): number {
+  return Math.hypot(b.x - a.x, b.y - a.y)
+}
+
+function angle(a: DOMPoint, b: DOMPoint): number {
+  return Math.atan2(b.y - a.y, b.x - a.x)
+}
+
+function midpoint(a: DOMPoint, b: DOMPoint): DOMPoint {
+  return new DOMPoint((a.x + b.x) / 2, (a.y + b.y) / 2)
+}
+
+function createPlaceholderItem(): Pixel9aEditorImageItem {
+  return {
+    id: createImageItemId(),
+    sourceImageUrl: PLACEHOLDER_DATA_URL,
+    naturalWidth: 400,
+    naturalHeight: 860,
+    transform: createCoverTransform(400, 860),
+  }
+}
+
+type GestureState =
+  | {
+      kind: 'drag'
+      pointerId: number
+      startPoint: DOMPoint
+      startTransform: Pixel9aEditorImageTransform
+    }
+  | {
+      kind: 'pinch'
+      startDistance: number
+      startAngle: number
+      startCenter: DOMPoint
+      startTransform: Pixel9aEditorImageTransform
+    }
+
 export function Pixel9aCaseMaskPreview() {
   const clipId = useId().replace(/:/g, '')
   const shadowId = `${clipId}-shadow`
-  const [imageHref, setImageHref] = useState<string | null>(PLACEHOLDER_DATA_URL)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+  const pointersRef = useRef(new Map<number, DOMPoint>())
+  const gestureRef = useRef<GestureState | null>(null)
+  const transformRef = useRef<Pixel9aEditorImageTransform | null>(null)
+  const [imageItem, setImageItem] = useState<Pixel9aEditorImageItem | null>(() => createPlaceholderItem())
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -37,30 +99,173 @@ export function Pixel9aCaseMaskPreview() {
     }
   }, [objectUrl])
 
+  useEffect(() => {
+    transformRef.current = imageItem?.transform ?? null
+  }, [imageItem?.transform])
+
+  const updateTransform = useCallback((updater: (transform: Pixel9aEditorImageTransform) => Pixel9aEditorImageTransform) => {
+    setImageItem((current) => {
+      if (!current) return current
+      const nextTransform = updater(current.transform)
+      transformRef.current = nextTransform
+      return { ...current, transform: nextTransform }
+    })
+  }, [])
+
   const onFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     const next = URL.createObjectURL(file)
     setObjectUrl(next)
-    setImageHref(next)
+    setImageItem({
+      id: createImageItemId(),
+      sourceImageUrl: next,
+      naturalWidth: PIXEL_9A_CASE_CLIP_PATH_BOUNDS.width,
+      naturalHeight: PIXEL_9A_CASE_CLIP_PATH_BOUNDS.height,
+      transform: createCoverTransform(
+        PIXEL_9A_CASE_CLIP_PATH_BOUNDS.width,
+        PIXEL_9A_CASE_CLIP_PATH_BOUNDS.height,
+      ),
+    })
     e.target.value = ''
   }, [objectUrl])
 
   const resetPlaceholder = useCallback(() => {
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     setObjectUrl(null)
-    setImageHref(PLACEHOLDER_DATA_URL)
+    setImageItem(createPlaceholderItem())
   }, [objectUrl])
 
   const showBlankCase = useCallback(() => {
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     setObjectUrl(null)
-    setImageHref(null)
+    setImageItem(null)
   }, [objectUrl])
 
+  const rotateBy = useCallback((deltaRad: number) => {
+    updateTransform((transform) => ({
+      ...transform,
+      rotationRad: transform.rotationRad + deltaRad,
+    }))
+  }, [updateTransform])
+
+  const onPointerDown = useCallback((event: PointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current
+    if (!svg || !imageItem) return
+
+    event.preventDefault()
+    svg.setPointerCapture(event.pointerId)
+
+    const point = clientPointToSvgPoint(svg, event.clientX, event.clientY)
+    pointersRef.current.set(event.pointerId, point)
+
+    const points = [...pointersRef.current.values()]
+    if (points.length >= 2) {
+      const [first, second] = points
+      gestureRef.current = {
+        kind: 'pinch',
+        startDistance: distance(first, second),
+        startAngle: angle(first, second),
+        startCenter: midpoint(first, second),
+        startTransform: imageItem.transform,
+      }
+      return
+    }
+
+    gestureRef.current = {
+      kind: 'drag',
+      pointerId: event.pointerId,
+      startPoint: point,
+      startTransform: imageItem.transform,
+    }
+  }, [imageItem])
+
+  const onPointerMove = useCallback((event: PointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current
+    const gesture = gestureRef.current
+    if (!svg || !gesture || !pointersRef.current.has(event.pointerId)) return
+
+    event.preventDefault()
+    const point = clientPointToSvgPoint(svg, event.clientX, event.clientY)
+    pointersRef.current.set(event.pointerId, point)
+
+    if (gesture.kind === 'drag') {
+      if (gesture.pointerId !== event.pointerId) return
+      updateTransform((current) => ({
+        ...current,
+        centerX: gesture.startTransform.centerX + point.x - gesture.startPoint.x,
+        centerY: gesture.startTransform.centerY + point.y - gesture.startPoint.y,
+      }))
+      return
+    }
+
+    const points = [...pointersRef.current.values()]
+    if (points.length < 2 || gesture.startDistance === 0) return
+
+    const [first, second] = points
+    const currentCenter = midpoint(first, second)
+    const nextScale = clampImageScale(gesture.startTransform.scale * (distance(first, second) / gesture.startDistance))
+
+    updateTransform((current) => ({
+      ...current,
+      centerX: gesture.startTransform.centerX + currentCenter.x - gesture.startCenter.x,
+      centerY: gesture.startTransform.centerY + currentCenter.y - gesture.startCenter.y,
+      scale: nextScale,
+      rotationRad: gesture.startTransform.rotationRad + angle(first, second) - gesture.startAngle,
+    }))
+  }, [updateTransform])
+
+  const onPointerEnd = useCallback((event: PointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current
+    if (svg?.hasPointerCapture(event.pointerId)) {
+      svg.releasePointerCapture(event.pointerId)
+    }
+
+    pointersRef.current.delete(event.pointerId)
+    const points = [...pointersRef.current.entries()]
+    const currentTransform = transformRef.current
+
+    if (points.length === 1 && currentTransform) {
+      const [pointerId, point] = points[0]
+      gestureRef.current = {
+        kind: 'drag',
+        pointerId,
+        startPoint: point,
+        startTransform: currentTransform,
+      }
+      return
+    }
+
+    gestureRef.current = null
+  }, [])
+
+  const onWheel = useCallback((event: WheelEvent<SVGSVGElement>) => {
+    const svg = svgRef.current
+    if (!svg || !imageItem) return
+
+    event.preventDefault()
+    const point = clientPointToSvgPoint(svg, event.clientX, event.clientY)
+    const factor = Math.exp(-event.deltaY * 0.001)
+
+    updateTransform((transform) => {
+      const nextScale = clampImageScale(transform.scale * factor)
+      const scaleRatio = nextScale / transform.scale
+
+      return {
+        ...transform,
+        centerX: point.x - (point.x - transform.centerX) * scaleRatio,
+        centerY: point.y - (point.y - transform.centerY) * scaleRatio,
+        scale: nextScale,
+      }
+    })
+  }, [imageItem, updateTransform])
+
   const b = PIXEL_9A_CASE_CLIP_PATH_BOUNDS
-  const imageBleed = 2
+  const imageTransform = imageItem?.transform
+  const imageTransformAttr = imageTransform
+    ? `translate(${imageTransform.centerX} ${imageTransform.centerY}) rotate(${radiansToDegrees(imageTransform.rotationRad)}) scale(${imageTransform.scale})`
+    : undefined
 
   return (
     <section className="pixel9a-case-mask" aria-label="Pixel 9a ケースマスクプレビュー">
@@ -76,14 +281,26 @@ export function Pixel9aCaseMaskPreview() {
         <button type="button" className="pixel9a-case-mask__reset" onClick={resetPlaceholder}>
           仮画像に戻す
         </button>
+        <button type="button" className="pixel9a-case-mask__reset" onClick={() => rotateBy(-Math.PI / 12)} disabled={!imageItem}>
+          左回転
+        </button>
+        <button type="button" className="pixel9a-case-mask__reset" onClick={() => rotateBy(Math.PI / 12)} disabled={!imageItem}>
+          右回転
+        </button>
       </div>
       <div className="pixel9a-case-mask__stage">
         <svg
+          ref={svgRef}
           className="pixel9a-case-mask__svg"
           viewBox={viewBoxAttr()}
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label="ケース形状でクリップされた画像"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerEnd}
+          onPointerCancel={onPointerEnd}
+          onWheel={onWheel}
         >
           <defs>
             <clipPath id={clipId} clipPathUnits="userSpaceOnUse" clipRule="evenodd">
@@ -144,16 +361,18 @@ export function Pixel9aCaseMaskPreview() {
           </defs>
           <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#000000" fillRule="evenodd" filter={`url(#${shadowId})`} />
           <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#ffffff" fillRule="evenodd" />
-          {imageHref ? (
+          {imageItem && imageTransform && imageTransformAttr ? (
             <g clipPath={`url(#${clipId})`}>
-              <image
-                href={imageHref}
-                x={b.left - imageBleed}
-                y={b.top - imageBleed}
-                width={b.width + imageBleed * 2}
-                height={b.height + imageBleed * 2}
-                preserveAspectRatio="xMidYMid slice"
-              />
+              <g transform={imageTransformAttr}>
+                <image
+                  href={imageItem.sourceImageUrl}
+                  x={-imageTransform.imageWidth / 2}
+                  y={-imageTransform.imageHeight / 2}
+                  width={imageTransform.imageWidth}
+                  height={imageTransform.imageHeight}
+                  preserveAspectRatio="none"
+                />
+              </g>
             </g>
           ) : null}
         </svg>
