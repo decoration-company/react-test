@@ -39,6 +39,9 @@ const PLACEHOLDER_DATA_URL =
     <text x="50%" y="54%" text-anchor="middle" fill="#374151" font-family="system-ui,sans-serif" font-size="14">プレースホルダー</text>
   </svg>`)
 
+const MAX_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024
+const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
+
 function viewBoxAttr(): string {
   const b = PIXEL_9A_CASE_CLIP_PATH_BOUNDS
   return `${b.left} ${b.top} ${b.width} ${b.height}`
@@ -70,6 +73,15 @@ function createPlaceholderItem(): Pixel9aEditorImageItem {
   }
 }
 
+function readImageNaturalSize(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight })
+    image.onerror = () => reject(new Error('画像サイズを読み取れませんでした'))
+    image.src = src
+  })
+}
+
 type GestureState =
   | {
       kind: 'drag'
@@ -94,6 +106,7 @@ export function Pixel9aCaseMaskPreview() {
   const transformRef = useRef<Pixel9aEditorImageTransform | null>(null)
   const [imageItem, setImageItem] = useState<Pixel9aEditorImageItem | null>(() => createPlaceholderItem())
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -114,34 +127,53 @@ export function Pixel9aCaseMaskPreview() {
     })
   }, [])
 
-  const onFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
+  const onFile = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    setFileError(null)
+    e.target.value = ''
+
+    if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+      setFileError('PNG/JPEG/JPG の画像を選んでください。')
+      return
+    }
+
+    if (file.size > MAX_IMAGE_FILE_SIZE_BYTES) {
+      setFileError('画像サイズは10MB以下にしてください。')
+      return
+    }
+
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     const next = URL.createObjectURL(file)
-    setObjectUrl(next)
-    setImageItem({
-      id: createImageItemId(),
-      sourceImageUrl: next,
-      naturalWidth: PIXEL_9A_CASE_CLIP_PATH_BOUNDS.width,
-      naturalHeight: PIXEL_9A_CASE_CLIP_PATH_BOUNDS.height,
-      transform: createCoverTransform(
-        PIXEL_9A_CASE_CLIP_PATH_BOUNDS.width,
-        PIXEL_9A_CASE_CLIP_PATH_BOUNDS.height,
-      ),
-    })
-    e.target.value = ''
+
+    try {
+      const naturalSize = await readImageNaturalSize(next)
+      setObjectUrl(next)
+      setImageItem({
+        id: createImageItemId(),
+        sourceImageUrl: next,
+        naturalWidth: naturalSize.width,
+        naturalHeight: naturalSize.height,
+        transform: createCoverTransform(naturalSize.width, naturalSize.height),
+      })
+    } catch (error) {
+      URL.revokeObjectURL(next)
+      setFileError(error instanceof Error ? error.message : '画像サイズを読み取れませんでした。')
+    }
   }, [objectUrl])
 
   const resetPlaceholder = useCallback(() => {
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     setObjectUrl(null)
+    setFileError(null)
     setImageItem(createPlaceholderItem())
   }, [objectUrl])
 
   const showBlankCase = useCallback(() => {
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     setObjectUrl(null)
+    setFileError(null)
     setImageItem(null)
   }, [objectUrl])
 
@@ -275,7 +307,7 @@ export function Pixel9aCaseMaskPreview() {
       <h1 className="pixel9a-case-mask__title">Pixel 9a（SVG マスク）</h1>
       <div className="pixel9a-case-mask__controls">
         <label className="pixel9a-case-mask__file">
-          <input className="pixel9a-case-mask__file-input" type="file" accept="image/*" onChange={onFile} />
+          <input className="pixel9a-case-mask__file-input" type="file" accept="image/png,image/jpeg" onChange={onFile} />
           画像を選ぶ
         </label>
         <button type="button" className="pixel9a-case-mask__reset" onClick={showBlankCase}>
@@ -291,6 +323,7 @@ export function Pixel9aCaseMaskPreview() {
           右回転
         </button>
       </div>
+      {fileError ? <p className="pixel9a-case-mask__error">{fileError}</p> : null}
       <div className="pixel9a-case-mask__stage">
         <svg
           ref={svgRef}

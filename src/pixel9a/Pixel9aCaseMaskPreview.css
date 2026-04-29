@@ -82,6 +82,12 @@
   outline-offset: 2px;
 }
 
+.pixel9a-case-mask__error {
+  max-width: min(640px, 92vw);
+  color: #b42318;
+  font-size: 0.88rem;
+}
+
 .pixel9a-case-mask__stage {
   width: min(320px, 88vw);
   aspect-ratio: 207.87 / 441.93;
