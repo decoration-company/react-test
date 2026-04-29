@@ -12,7 +12,6 @@ import {
 import {
   PIXEL_9A_CASE_CLIP_PATH_BOUNDS,
   PIXEL_9A_CASE_CLIP_PATH_D,
-  PIXEL_9A_CASE_OUTER_PATH_D,
 } from './constants'
 import {
   clampImageScale,
@@ -430,7 +429,7 @@ export function Pixel9aCaseMaskPreview() {
               </feMerge>
             </filter>
           </defs>
-          <path d={PIXEL_9A_CASE_OUTER_PATH_D} fill="#000000" filter={`url(#${shadowId})`} />
+          <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#000000" fillRule="evenodd" filter={`url(#${shadowId})`} />
           <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#ffffff" fillRule="evenodd" />
           {imageItem && imageTransform && imageTransformAttr ? (
             <g clipPath={`url(#${clipId})`}>
