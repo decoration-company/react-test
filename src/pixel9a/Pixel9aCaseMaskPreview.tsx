@@ -97,6 +97,28 @@ type GestureState =
       startTransform: Pixel9aEditorImageTransform
     }
 
+type MockSaveResult = {
+  design_id: string
+  composed_image_url: string
+  preview_image_url: string
+}
+
+function mockSaveDesign(sourceImageUrl: string): Promise<MockSaveResult> {
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      const designId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `mock-${Date.now().toString(36)}`
+
+      resolve({
+        design_id: designId,
+        composed_image_url: sourceImageUrl,
+        preview_image_url: sourceImageUrl,
+      })
+    }, 500)
+  })
+}
+
 export function Pixel9aCaseMaskPreview() {
   const clipId = useId().replace(/:/g, '')
   const shadowId = `${clipId}-shadow`
@@ -107,6 +129,9 @@ export function Pixel9aCaseMaskPreview() {
   const [imageItem, setImageItem] = useState<Pixel9aEditorImageItem | null>(() => createPlaceholderItem())
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveResult, setSaveResult] = useState<MockSaveResult | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     return () => {
@@ -183,6 +208,26 @@ export function Pixel9aCaseMaskPreview() {
       rotationRad: transform.rotationRad + deltaRad,
     }))
   }, [updateTransform])
+
+  const onMockSave = useCallback(async () => {
+    if (!imageItem) {
+      setSaveError('保存する画像を選んでください。')
+      return
+    }
+
+    setIsSaving(true)
+    setSaveError(null)
+    setSaveResult(null)
+
+    try {
+      const result = await mockSaveDesign(imageItem.sourceImageUrl)
+      setSaveResult(result)
+    } catch {
+      setSaveError('保存に失敗しました。もう一度お試しください。')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [imageItem])
 
   const onPointerDown = useCallback((event: PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -322,8 +367,17 @@ export function Pixel9aCaseMaskPreview() {
         <button type="button" className="pixel9a-case-mask__reset" onClick={() => rotateBy(Math.PI / 12)} disabled={!imageItem}>
           右回転
         </button>
+        <button type="button" className="pixel9a-case-mask__save" onClick={onMockSave} disabled={!imageItem || isSaving}>
+          {isSaving ? '保存中' : '保存'}
+        </button>
       </div>
       {fileError ? <p className="pixel9a-case-mask__error">{fileError}</p> : null}
+      {saveError ? <p className="pixel9a-case-mask__error">{saveError}</p> : null}
+      {saveResult ? (
+        <output className="pixel9a-case-mask__save-result">
+          design_id: {saveResult.design_id}
+        </output>
+      ) : null}
       <div className="pixel9a-case-mask__stage">
         <svg
           ref={svgRef}
