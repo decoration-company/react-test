@@ -2,7 +2,6 @@ import { type ChangeEvent, useCallback, useEffect, useId, useState } from 'react
 import {
   PIXEL_9A_CASE_CLIP_PATH_BOUNDS,
   PIXEL_9A_CASE_CLIP_PATH_D,
-  PIXEL_9A_CASE_CLIP_HOLE_PATH_D,
 } from './constants'
 import './Pixel9aCaseMaskPreview.css'
 
@@ -28,7 +27,8 @@ function viewBoxAttr(): string {
 
 export function Pixel9aCaseMaskPreview() {
   const clipId = useId().replace(/:/g, '')
-  const [imageHref, setImageHref] = useState<string>(PLACEHOLDER_DATA_URL)
+  const shadowId = `${clipId}-shadow`
+  const [imageHref, setImageHref] = useState<string | null>(PLACEHOLDER_DATA_URL)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -53,7 +53,14 @@ export function Pixel9aCaseMaskPreview() {
     setImageHref(PLACEHOLDER_DATA_URL)
   }, [objectUrl])
 
+  const showBlankCase = useCallback(() => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl)
+    setObjectUrl(null)
+    setImageHref(null)
+  }, [objectUrl])
+
   const b = PIXEL_9A_CASE_CLIP_PATH_BOUNDS
+  const imageBleed = 2
 
   return (
     <section className="pixel9a-case-mask" aria-label="Pixel 9a ケースマスクプレビュー">
@@ -63,6 +70,9 @@ export function Pixel9aCaseMaskPreview() {
           <input className="pixel9a-case-mask__file-input" type="file" accept="image/*" onChange={onFile} />
           画像を選ぶ
         </label>
+        <button type="button" className="pixel9a-case-mask__reset" onClick={showBlankCase}>
+          無地（白）で見る
+        </button>
         <button type="button" className="pixel9a-case-mask__reset" onClick={resetPlaceholder}>
           仮画像に戻す
         </button>
@@ -79,38 +89,73 @@ export function Pixel9aCaseMaskPreview() {
             <clipPath id={clipId} clipPathUnits="userSpaceOnUse" clipRule="evenodd">
               <path d={PIXEL_9A_CASE_CLIP_PATH_D} fillRule="evenodd" />
             </clipPath>
+            <filter
+              id={shadowId}
+              x={b.left - 48}
+              y={b.top - 48}
+              width={b.width + 96}
+              height={b.height + 112}
+              filterUnits="userSpaceOnUse"
+              colorInterpolationFilters="sRGB"
+            >
+              <feDropShadow
+                in="SourceAlpha"
+                dx="-2"
+                dy="-2"
+                stdDeviation="12"
+                floodColor="#000000"
+                floodOpacity="0.06"
+                result="ambient"
+              />
+              <feDropShadow
+                in="SourceAlpha"
+                dx="3"
+                dy="6"
+                stdDeviation="8"
+                floodColor="#000000"
+                floodOpacity="0.18"
+                result="drop"
+              />
+              <feDropShadow
+                in="SourceAlpha"
+                dx="0"
+                dy="8"
+                stdDeviation="10"
+                floodColor="#000000"
+                floodOpacity="0.10"
+                result="base"
+              />
+              <feDropShadow
+                in="SourceAlpha"
+                dx="2"
+                dy="3"
+                stdDeviation="3"
+                floodColor="#000000"
+                floodOpacity="0.15"
+                result="contact"
+              />
+              <feMerge>
+                <feMergeNode in="ambient" />
+                <feMergeNode in="drop" />
+                <feMergeNode in="base" />
+                <feMergeNode in="contact" />
+              </feMerge>
+            </filter>
           </defs>
-          <rect
-            x={b.left}
-            y={b.top}
-            width={b.width}
-            height={b.height}
-            fill="var(--pixel9a-stage-bg, #e8e9ec)"
-          />
-          <g clipPath={`url(#${clipId})`}>
-            <image
-              href={imageHref}
-              x={b.left}
-              y={b.top}
-              width={b.width}
-              height={b.height}
-              preserveAspectRatio="xMidYMid slice"
-            />
-          </g>
-          <path
-            d={PIXEL_9A_CASE_CLIP_PATH_D}
-            fill="none"
-            stroke="rgba(0,0,0,0.14)"
-            strokeWidth={1.25}
-            vectorEffect="nonScalingStroke"
-          />
-          <path
-            d={PIXEL_9A_CASE_CLIP_HOLE_PATH_D}
-            fill="none"
-            stroke="rgba(0,0,0,0.2)"
-            strokeWidth={1}
-            vectorEffect="nonScalingStroke"
-          />
+          <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#000000" fillRule="evenodd" filter={`url(#${shadowId})`} />
+          <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#ffffff" fillRule="evenodd" />
+          {imageHref ? (
+            <g clipPath={`url(#${clipId})`}>
+              <image
+                href={imageHref}
+                x={b.left - imageBleed}
+                y={b.top - imageBleed}
+                width={b.width + imageBleed * 2}
+                height={b.height + imageBleed * 2}
+                preserveAspectRatio="xMidYMid slice"
+              />
+            </g>
+          ) : null}
         </svg>
       </div>
     </section>
