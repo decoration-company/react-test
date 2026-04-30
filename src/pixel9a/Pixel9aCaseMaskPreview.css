@@ -103,6 +103,8 @@
 }
 
 .pixel9a-case-mask__save-result {
+  display: grid;
+  gap: 0.35rem;
   max-width: min(640px, 92vw);
   padding: 0.45rem 0.75rem;
   border: 1px solid var(--border);
@@ -112,6 +114,10 @@
   font-family: var(--mono);
   font-size: 0.8rem;
   overflow-wrap: anywhere;
+}
+
+.pixel9a-case-mask__save-result a {
+  color: var(--accent);
 }
 
 .pixel9a-case-mask__stage {
@@ -128,6 +134,23 @@
   background: transparent;
   touch-action: none;
   user-select: none;
+}
+
+.pixel9a-case-mask__rendered {
+  display: grid;
+  gap: 0.5rem;
+  width: min(320px, 88vw);
+  margin: 0;
+}
+
+.pixel9a-case-mask__rendered img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1247 / 2652;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
 }
 
 .pixel9a-case-mask__debug {

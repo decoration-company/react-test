@@ -13,6 +13,8 @@
 - **重い処理（画像合成・印刷用高解像度生成）はサーバー側（decocom_commerce）に集約**
 - **クライアント（Flutter / React）は軽量に保つ**
 - Flutter版とReact版は同じサーバーAPIを叩く前提で設計し、コードの二重実装を避ける
+- **Pixel 9a専用実装から、SVG path maskを扱える共通基盤へ寄せる**
+- `aseClipSvgPathData`（既存命名では `caseClipSvgPathData` / `frameClipSvgPathData` 系のクリップSVG path）を端末固有定数として閉じ込めず、Reactプレビュー・サーバー合成・Flutter互換で同じ path data と fill rule を扱えるようにする
 
 ### 1.2 リポジトリ構成
 | リポジトリ | 役割 | 言語/FW |
@@ -27,6 +29,7 @@
 |------|------|
 | Pixel 9a SVGマスク表示 | ✅ 完了 |
 | マスク内に画像表示 | ✅ 完了 |
+| SVG path parser拡張（`aseClipSvgPathData` 対応） | ⬜ 今回 |
 | 画像の拡大縮小・回転・移動 | ⬜ 今回 |
 | デザイン保存 → decocom_commerce へ送信 | ⬜ 今回 |
 | 印刷用高解像度画像の生成（サーバー側） | ⬜ サーバー側担当 |
@@ -34,11 +37,14 @@
 | 認証 | ⬜ 後続（要検討） |
 
 ### 1.4 スコープ外（今回はやらない）
-- 他デバイス対応（Pixel 9aのみ）
+- 複数デバイスUIの本格展開
 - スタンプ・テキスト追加
 - レイヤー管理・Undo/Redo
 - ゲスト購入フロー
 - カート連携・購入完了
+
+**方針変更メモ**:
+「Pixel 9aのみの個別対応」ではなく、まず `aseClipSvgPathData` を含むSVG pathを正しく読める共通パーサ/マスク解決層を作る。Pixel 9aはその最初の利用例として残すが、実装の主語は `pixel9a` ではなく `svg_path mask` にする。
 
 ---
 
@@ -49,10 +55,41 @@
 | 処理 | クライアント | サーバー |
 |------|------------|---------|
 | SVGマスク描画 | ✅ | ー |
+| SVG path dataの検証・正規化 | 軽量検証のみ | ✅（正本） |
 | 画像のドラッグ・拡大縮小・回転（プレビュー） | ✅ | ー |
 | プレビュー画像生成（Canvas API） | ✅ | ー |
 | 印刷用高解像度画像生成 | ー | ✅ |
 | デザインパラメータの保存 | ー | ✅（decocom_commerce。必要に応じてアリシア既存連携） |
+
+### 2.1.1 `aseClipSvgPathData` 対応を入れる場所
+
+`aseClipSvgPathData` 対応は、Pixel 9a画面コンポーネントではなく **共通SVG path mask層** に入れる。
+
+| 層 | 入れる場所 | 役割 |
+|----|----------|------|
+| decocom_editor | `src/svg-path/` または `src/masks/` を新設 | Reactプレビュー用に path data / viewBox / bounds / fill rule を扱う。DOM SVGの `<path d>` へ渡せる形にする |
+| decocom_editor | `src/pixel9a/` | Pixel 9a固有のUI・初期値・デバッグ表示だけを持つ。path parser本体は置かない |
+| decocom_commerce | `app/rendering/skia_python.py` の `_svg_path_to_skia_path` 周辺 | 印刷用合成の正本。Skia pathへ変換し、`M/L/H/V/C/Z` 以外のSVG path commandも必要に応じて拡張する |
+| decocom_commerce | `app/api/skia.py` の `RenderMask` | `mask: { type: "svg_path", path_data, fill_type }` をAPI契約として維持し、path長・fill rule・将来のviewBox指定を検証する |
+| decocom_flutter | `path_drawing.parseSvgPathData` 利用箇所 | 既存Flutter表示との互換確認用。Flutterに独自parserを足すのではなく、React/commerceの結果をFlutterの見た目と比較する |
+
+**理由**:
+- `aseClipSvgPathData` はデバイス名ではなく「SVG pathで表現されたクリップ形状」なので、Pixel 9aディレクトリに閉じ込めると次の機種・手帳型・フレーム型で再利用できない
+- サーバー合成が製造用の正本になるため、最終的に対応すべきparserは decocom_commerce 側
+- React側はブラウザSVGに描画させられるため、parserは最小限でよい。ただし bounds算出、viewBox原点化、fill ruleの扱いは共通化しておく
+
+### 2.1.2 SVG path parser拡張の対象
+
+まず既存の commerce parser が対応済みの `M/m`, `L/l`, `H/h`, `V/v`, `C/c`, `Z/z` を維持する。そのうえで `aseClipSvgPathData` に含まれる可能性がある command を優先して追加する。
+
+優先順:
+1. `S/s`: smooth cubic bezier
+2. `Q/q`: quadratic bezier
+3. `T/t`: smooth quadratic bezier
+4. `A/a`: elliptical arc
+5. 複数subpath、連続座標、省略command、指数表記、カンマ/空白混在の厳密化
+
+`A/a` は実装ミスの影響が大きいため、まず対象pathに含まれるか確認する。含まれる場合は自前近似より、信頼できるSVG path parserライブラリの導入、または十分なテスト付きのarc to cubic変換を検討する。
 
 ### 2.2 データフロー
 
@@ -91,6 +128,15 @@
 {
   "design_id": "uuid",
   "device": "pixel-9a",
+  "mask": {
+    "type": "svg_path",
+    "path_data": "M172.22,441.43H35.65...",
+    "fill_type": "even_odd",
+    "view_box": {
+      "width": 207.87,
+      "height": 441.93
+    }
+  },
   "source_image_url": "https://storage.../uploads/xxx.jpg",
   "composed_image_url": "https://storage.../composed/xxx.png",
   "preview_image_url": "https://storage.../preview/xxx.jpg",
@@ -160,6 +206,8 @@
 - `scale`: Flutter版に合わせ、画像自然サイズに対する倍率
 - `angle`: Flutter版に合わせ、radianで保存
 - `design_area`: React表示サイズではなく、Pixel 9a SVG viewBoxの論理サイズを保存する
+- `mask.path_data`: `aseClipSvgPathData` 相当のSVG path文字列。device固有定数から参照してよいが、保存・render APIでは `mask` として明示する
+- `mask.fill_type`: 穴抜きがあるケースは `even_odd` を使う。Flutter/React/Skiaで同じ穴抜き結果になることを確認する
 - サーバー合成時はこのtransformを唯一の正本として、React / Flutter / Skiaで同じ見た目になることを目標にする
 
 ---
@@ -174,6 +222,11 @@ Content-Type: application/json
 
 {
   "device": "pixel-9a",
+  "mask": {
+    "type": "svg_path",
+    "path_data": "M172.22,441.43H35.65...",
+    "fill_type": "even_odd"
+  },
   "source_image_url": "https://storage.../uploads/xxx.jpg",
   "design_area": {
     "width": 207.87,
@@ -225,6 +278,8 @@ file: <binary>
 - Flutter版も将来的に同じエンドポイントを叩く前提で設計
 - リクエスト/レスポンス形式は Flutter の `DesignItem.toMap()` に寄せる
 - `device` は今後の拡張に備えて文字列ID
+- `mask` は `device` からサーバー側で解決してもよいが、MVPではデバッグしやすいように `path_data` を明示送信できる形を残す
+- 将来的には `device` + `case_type` から commerce が `mask_id` / `path_data` / `fill_type` / `viewBox` を解決し、クライアント送信のpathを信用しない構成に寄せる
 - Flutter版の既存アップロードキーは歴史的に `image_local_path` だが、React/commerce APIでは `source_image_url` として扱い、必要ならサーバー側で変換する
 
 ### 3.4 Shopify連携時に返す値（先に意識する）
@@ -246,6 +301,21 @@ window.parent.postMessage({
 ---
 
 ## 4. 実装フェーズ（decocom_editor側）
+
+### Phase A0: SVG path parser / mask基盤（今回追加）
+**目的**: `aseClipSvgPathData` をPixel 9a専用ではなく、共通maskとして扱えるようにする
+
+- [ ] 対象の `aseClipSvgPathData` に含まれるSVG path commandを棚卸しする
+- [ ] decocom_commerce の `_svg_path_to_skia_path` を必要command分だけ拡張する
+- [ ] `fill_type: even_odd` の穴抜き結果をテストする
+- [ ] path bounds / viewBox / 原点化の扱いを固定する
+- [ ] React側に `src/masks` または `src/svg-path` を新設し、Pixel 9a固有定数から切り離す
+- [ ] Pixel 9aの既存表示が新しい共通mask定義で変わらないことを確認する
+
+**受け入れ条件**:
+- `aseClipSvgPathData` を render API の `mask.path_data` として渡してもサーバー合成が成功する
+- Reactプレビューとサーバー合成で、外周と穴抜きが同じ向き・同じ位置になる
+- parser未対応commandが来た場合、サーバーは成功扱いにせず、どのcommandが未対応か分かるエラーを返す
 
 ### Phase A: 画像操作機能（1〜2週間）
 **目的**: マスク内で画像を自由に動かせるようにする
@@ -296,6 +366,8 @@ window.parent.postMessage({
 |------|----------|
 | transformの基準（中心座標/左上座標、scale基準、rotation方向） | **決定**: 保存正本は Flutter `DesignItem` 互換の左上座標 + 自然サイズscale + radian。React内部だけ中心座標可 |
 | サーバーAPIのリクエスト/レスポンス形式 | **一次決定**: `design_area` + `items[]` を送る。エンドポイント名と保存先はサーバー側で確定 |
+| SVG path parserの対応範囲 | **今回追加**: `aseClipSvgPathData` に含まれるcommandを最優先。commerce側を正本parserにし、React側は表示・軽量検証に留める |
+| maskの正本 | **今回追加**: MVPは `mask.path_data` 明示送信可。将来は `device` / `case_type` / `mask_id` からcommerce側で解決 |
 | 画像ストレージの場所（Supabase / S3 / アリシア直） | **未決**: commerce側で決める。アリシア直保存は避け、URL/ID連携に留める方針 |
 | アリシア側の保存スキーマ | **保留**: Aliciaは読み取り中心。新規スキーマ変更を前提にせず、commerce側の `design_id` を正本にする |
 | 印刷用画像の解像度・形式（最終px、300dpi、塗り足し、透明背景、カラープロファイル） | サーバー側 + 製造現場とすり合わせ |
@@ -312,6 +384,7 @@ decocom_all内のFlutter版を確認して、React版・サーバー版と合わ
 |----------|--------------|------------|
 | デバイスID | `pixel_9a_hard_white_inline_frame_clip.dart` の `isPixel9aModelForDesignCaseMask` は model名/alias の `pixel9a` 判定 | React/commerceの外部IDは `pixel-9a` に統一。Flutter接続時は model/alias 判定から `pixel-9a` に正規化 |
 | マスク座標系 | Flutter fallback path は `M367.68...` 系で、React SVGは `Google-Pixel9a.svg` の viewBox `207.87 x 441.93` | React MVPは現行SVG viewBox `207.87 x 441.93` を論理座標にする。サーバーは path bounds を原点化して同じ座標で描く |
+| SVG path parser | Flutterは `path_drawing.parseSvgPathData`、commerceは `_svg_path_to_skia_path`、ReactはブラウザSVG描画 | parser拡張はcommerce側を主対象にする。Reactは共通mask定義へ移し、表示差分の検出に使う |
 | 初期画像配置 | Flutter背景は `ImageItemWidget` 側の `BoxFit.cover` 相当。Pixel9a previewは `DesignItemLayer` を積むだけ | Reactは選択画像をマスク外接矩形へ cover 初期配置。保存時は cover済みの `size_width/height` と `top_left_pos` に展開し、`scale=1.0` から始める |
 | 移動量 | `DesignItemMoveHandler`: 画面px差分を `designRatio` で割って `topLeftPos` を更新 | ReactもDOM上の表示倍率を逆算して、画面px差分をSVG viewBox座標へ変換する。保存は正規化座標ではなく論理px |
 | ズーム | `DesignItemScaleHandler`: 画像/スタンプは `scale` 更新。下限 `kDesignItemMiniScale`、上限 `kDesignItemMaxScale` | React MVPは `scale` を画像自然サイズ/初期coverサイズへの倍率として保持。min/maxはUIで仮設定し、Flutter定数と体感を合わせる |
@@ -327,13 +400,18 @@ decocom_all内のFlutter版を確認して、React版・サーバー版と合わ
 ## 7. 直近の進め方
 
 ### 7.1 editor側で先に作るもの
-- `src/pixel9a` に transform 型と座標変換関数を追加する
+- `src/masks` または `src/svg-path` にSVG path mask定義・bounds・fill ruleを扱う共通層を追加する
+- `src/pixel9a` はPixel 9a固有UIだけに寄せ、clip path定数を共通mask層から参照する
+- transform 型と座標変換関数を追加する
 - `Pixel9aCaseMaskPreview` をドラッグ/ホイール/回転ボタン対応にする
 - デバッグ用に現在の `items[]` payload を表示する
 - 画像選択時に自然サイズを読み、マスク外接矩形にcover初期配置する
 - 保存ボタンはモックAPIから始め、payloadの形を先に固定する
 
 ### 7.2 commerce側に渡す確認
+- `aseClipSvgPathData` に含まれるSVG path command一覧
+- `_svg_path_to_skia_path` で追加すべきcommandと、ライブラリ導入可否
+- `mask.path_data` をMVPでクライアントから送るか、commerce側の `mask_id` 解決に先に寄せるか
 - `/api/upload` と `/api/skia/render` を分けるか、renderでmultipartも受けるか
 - `design_area` と `items[]` のpayloadをそのまま保存するか、commerce内の別スキーマに変換するか
 - 生成画像の保存先を Supabase Storage / R2 / S3 のどれにするか
@@ -348,9 +426,12 @@ decocom_all内のFlutter版を確認して、React版・サーバー版と合わ
 
 ## 8. 直近のアクション
 
-1. decocom_editorでPhase A（画像操作）に着手
-2. `items[]` payloadをデバッグ表示しながら、Flutter互換の座標変換を確認
-3. Phase Aと並行して、モックAPIでPhase Bを試作
-4. commerce側API仕様を確定
-5. サーバーAPI実装完了後に本接続へ切り替え
-6. Shopify iframe組み込みへ進む
+1. `aseClipSvgPathData` の実pathを確認し、必要なSVG commandを洗い出す
+2. decocom_commerce のSVG path parser拡張方針を決める
+3. decocom_editorに共通mask層を追加し、Pixel 9a表示をそこへ接続する
+4. decocom_editorでPhase A（画像操作）を継続
+5. `items[]` + `mask` payloadをデバッグ表示しながら、Flutter互換の座標変換を確認
+6. Phase Aと並行して、モックAPIでPhase Bを試作
+7. commerce側API仕様を確定
+8. サーバーAPI実装完了後に本接続へ切り替え
+9. Shopify iframe組み込みへ進む

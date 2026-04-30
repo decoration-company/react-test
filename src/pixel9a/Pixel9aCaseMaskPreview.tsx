@@ -13,6 +13,7 @@ import {
   PIXEL_9A_CASE_CLIP_PATH_BOUNDS,
   PIXEL_9A_CASE_CLIP_PATH_D,
 } from './constants'
+import { renderDesign, uploadImage, type RenderDesignResponse } from '../api/commerce'
 import {
   clampImageScale,
   clientPointToSvgPoint,
@@ -97,28 +98,6 @@ type GestureState =
       startTransform: Pixel9aEditorImageTransform
     }
 
-type MockSaveResult = {
-  design_id: string
-  composed_image_url: string
-  preview_image_url: string
-}
-
-function mockSaveDesign(sourceImageUrl: string): Promise<MockSaveResult> {
-  return new Promise((resolve) => {
-    window.setTimeout(() => {
-      const designId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `mock-${Date.now().toString(36)}`
-
-      resolve({
-        design_id: designId,
-        composed_image_url: sourceImageUrl,
-        preview_image_url: sourceImageUrl,
-      })
-    }, 500)
-  })
-}
-
 export function Pixel9aCaseMaskPreview() {
   const clipId = useId().replace(/:/g, '')
   const shadowId = `${clipId}-shadow`
@@ -127,10 +106,11 @@ export function Pixel9aCaseMaskPreview() {
   const gestureRef = useRef<GestureState | null>(null)
   const transformRef = useRef<Pixel9aEditorImageTransform | null>(null)
   const [imageItem, setImageItem] = useState<Pixel9aEditorImageItem | null>(() => createPlaceholderItem())
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [saveResult, setSaveResult] = useState<MockSaveResult | null>(null)
+  const [saveResult, setSaveResult] = useState<RenderDesignResponse | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -174,6 +154,7 @@ export function Pixel9aCaseMaskPreview() {
 
     try {
       const naturalSize = await readImageNaturalSize(next)
+      setSelectedFile(file)
       setObjectUrl(next)
       setImageItem({
         id: createImageItemId(),
@@ -191,14 +172,18 @@ export function Pixel9aCaseMaskPreview() {
   const resetPlaceholder = useCallback(() => {
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     setObjectUrl(null)
+    setSelectedFile(null)
     setFileError(null)
+    setSaveResult(null)
     setImageItem(createPlaceholderItem())
   }, [objectUrl])
 
   const showBlankCase = useCallback(() => {
     if (objectUrl) URL.revokeObjectURL(objectUrl)
     setObjectUrl(null)
+    setSelectedFile(null)
     setFileError(null)
+    setSaveResult(null)
     setImageItem(null)
   }, [objectUrl])
 
@@ -209,8 +194,8 @@ export function Pixel9aCaseMaskPreview() {
     }))
   }, [updateTransform])
 
-  const onMockSave = useCallback(async () => {
-    if (!imageItem) {
+  const onSave = useCallback(async () => {
+    if (!imageItem || !selectedFile) {
       setSaveError('保存する画像を選んでください。')
       return
     }
@@ -220,14 +205,18 @@ export function Pixel9aCaseMaskPreview() {
     setSaveResult(null)
 
     try {
-      const result = await mockSaveDesign(imageItem.sourceImageUrl)
+      const uploaded = await uploadImage(selectedFile)
+      const result = await renderDesign(createRenderPayload({
+        ...imageItem,
+        sourceImageUrl: uploaded.source_image_url,
+      }))
       setSaveResult(result)
-    } catch {
-      setSaveError('保存に失敗しました。もう一度お試しください。')
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : '保存に失敗しました。もう一度お試しください。')
     } finally {
       setIsSaving(false)
     }
-  }, [imageItem])
+  }, [imageItem, selectedFile])
 
   const onPointerDown = useCallback((event: PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -367,16 +356,19 @@ export function Pixel9aCaseMaskPreview() {
         <button type="button" className="pixel9a-case-mask__reset" onClick={() => rotateBy(Math.PI / 12)} disabled={!imageItem}>
           右回転
         </button>
-        <button type="button" className="pixel9a-case-mask__save" onClick={onMockSave} disabled={!imageItem || isSaving}>
-          {isSaving ? '保存中' : '保存'}
+        <button type="button" className="pixel9a-case-mask__save" onClick={onSave} disabled={!imageItem || !selectedFile || isSaving}>
+          {isSaving ? '生成中' : '印刷PNG生成'}
         </button>
       </div>
       {fileError ? <p className="pixel9a-case-mask__error">{fileError}</p> : null}
       {saveError ? <p className="pixel9a-case-mask__error">{saveError}</p> : null}
       {saveResult ? (
-        <output className="pixel9a-case-mask__save-result">
-          design_id: {saveResult.design_id}
-        </output>
+        <div className="pixel9a-case-mask__save-result">
+          <output>design_id: {saveResult.design_id}</output>
+          <a href={saveResult.composed_image_url} target="_blank" rel="noreferrer">
+            composed_image_url
+          </a>
+        </div>
       ) : null}
       <div className="pixel9a-case-mask__stage">
         <svg
@@ -447,6 +439,11 @@ export function Pixel9aCaseMaskPreview() {
           ) : null}
         </svg>
       </div>
+      {saveResult ? (
+        <figure className="pixel9a-case-mask__rendered">
+          <img src={saveResult.composed_image_url} alt="生成された印刷用PNG" />
+        </figure>
+      ) : null}
       <details className="pixel9a-case-mask__debug">
         <summary>payload</summary>
         <pre>{JSON.stringify(debugPayload, null, 2)}</pre>
