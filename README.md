@@ -23,6 +23,45 @@ npm run dev
 
 - 開発サーバは通常 `http://localhost:5173` で起動します（出力ログにURLが出ます）。
 
+## ローカル開発（HTTPSトンネル）
+
+Shopify の iframe からローカルの editor を表示する場合は HTTPS の公開URLが必要です。
+ngrok 無料版は iframe 内で警告ページを突破できないため、Cloudflare Tunnel を推奨します。
+
+```bash
+brew install cloudflared
+```
+
+editor の dev server と並行して、別ターミナルで Cloudflare Tunnel を起動します。
+
+```bash
+cloudflared tunnel --url http://localhost:5173
+```
+
+出力された `https://xxxx.trycloudflare.com` を Shopify app embed の `Editor URL` に設定します。
+
+注意:
+- editor の dev server（`npm run dev`）と `cloudflared` は並行起動が必要です。
+- `vite.config.ts` の `server.allowedHosts` には `.trycloudflare.com` を追加済みです。
+- ngrok 用の `.ngrok-free.dev` も残しており、両対応です。
+
+### Shopify embed 時の挙動
+
+Shopify app embed から起動された場合、URLパラメータの `embed=shopify` または `platform=shopify` を見てShopify連携モードに入ります。
+
+Shopify連携モードでは、Phase 2の動作確認を優先して `uploadImage()` / `renderDesign()` は呼びません。つまりローカルの `decocom_commerce` やアリシアAPIには接続せず、editorが仮の `spec_id` とblob URLを即座に親のShopify商品ページへ `postMessage` します。
+
+送信するmessage typeは `decocom:design:ready` で、現在は以下のような値を返します。
+
+- `spec_id`: `spec_dev_xxxxxxxxxxxx`
+- `design_id`: `spec_id` と同じ仮値
+- `preview_url`: editorが生成したblob URL
+- `composed_image_url`: `preview_url` と同じblob URL
+
+TODO:
+- 本番時は `decocom_commerce` 経由でデザインデータを保存し、正式な `spec_id` を発行する。
+- preview / composed image はblob URLではなく、Shopify webhook後の処理でも参照できる公開URLにする。
+
 ## Pixel 9a 印刷PNG生成 E2E
 
 Pixel 9a画面では、画像選択 → マスク内で移動・拡大縮小・回転 → `decocom_commerce` で印刷用PNG生成、までを確認できます。
@@ -69,6 +108,17 @@ npm run preview
 ```bash
 npm run lint
 ```
+
+## 残課題
+
+実運用に向けた未対応項目。
+
+1. blob URL は一時的（ブラウザを閉じると失効）なので、`decocom_commerce` 経由で公開URL化する。
+2. `spec_dev_xxx` は仮値なので、`decocom_commerce` 側でデザインデータ保存後に正式な `spec_id` を発行する。
+3. editor は現在 Pixel 9a のみ対応。ほかの機種へ展開する。
+4. チェックアウト → 注文 → webhook → アリシア連携のE2Eは未確認。
+5. UUUM軸（editor不使用、メタフィールド2つ + `featured_image`）の動作確認は未実施。
+6. ngrok用の `allowedHosts` は残置中。不要になったら整理する。
 
 ## メモ（テンプレ由来）
 
