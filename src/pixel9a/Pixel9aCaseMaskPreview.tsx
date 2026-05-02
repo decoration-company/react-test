@@ -98,6 +98,35 @@ type GestureState =
       startTransform: Pixel9aEditorImageTransform
     }
 
+type ShopifyDesignReadyMessage = {
+  type: 'decocom:design:ready'
+  spec_id: string
+  design_id: string
+  preview_url: string
+  composed_image_url: string
+}
+
+function pageParams(): URLSearchParams {
+  return new URLSearchParams(window.location.search)
+}
+
+function embeddedParentOrigin(): string {
+  const params = new URLSearchParams(window.location.search)
+  const origin = params.get('origin') ?? params.get('parent_origin') ?? '*'
+  if (origin === '*') return origin
+
+  try {
+    return new URL(origin).origin
+  } catch {
+    return '*'
+  }
+}
+
+function isShopifyEmbedUrl(): boolean {
+  const params = pageParams()
+  return params.get('embed') === 'shopify' || params.get('platform') === 'shopify'
+}
+
 export function Pixel9aCaseMaskPreview() {
   const clipId = useId().replace(/:/g, '')
   const shadowId = `${clipId}-shadow`
@@ -112,6 +141,8 @@ export function Pixel9aCaseMaskPreview() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saveResult, setSaveResult] = useState<RenderDesignResponse | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const parentOrigin = useMemo(() => embeddedParentOrigin(), [])
+  const isShopifyEmbed = useMemo(() => isShopifyEmbedUrl(), [])
 
   useEffect(() => {
     return () => {
@@ -205,6 +236,22 @@ export function Pixel9aCaseMaskPreview() {
     setSaveResult(null)
 
     try {
+      if (isShopifyEmbed) {
+        // TODO: Shopify本実装では、webhook受信後にdecocom_commerce経由で印刷データを保存・生成する。
+        const specId = `spec_dev_${Date.now()}`
+        const previewUrl = imageItem.sourceImageUrl || URL.createObjectURL(selectedFile)
+        const message: ShopifyDesignReadyMessage = {
+          type: 'decocom:design:ready',
+          spec_id: specId,
+          design_id: specId,
+          preview_url: previewUrl,
+          composed_image_url: previewUrl,
+        }
+
+        window.parent.postMessage(message, parentOrigin)
+        return
+      }
+
       const uploaded = await uploadImage(selectedFile)
       const result = await renderDesign(createRenderPayload({
         ...imageItem,
@@ -216,7 +263,21 @@ export function Pixel9aCaseMaskPreview() {
     } finally {
       setIsSaving(false)
     }
-  }, [imageItem, selectedFile])
+  }, [imageItem, isShopifyEmbed, parentOrigin, selectedFile])
+
+  const sendDesignToShopify = useCallback(() => {
+    if (!saveResult || !parentOrigin) return
+
+    const message: ShopifyDesignReadyMessage = {
+      type: 'decocom:design:ready',
+      spec_id: saveResult.design_id,
+      design_id: saveResult.design_id,
+      preview_url: saveResult.preview_image_url,
+      composed_image_url: saveResult.composed_image_url,
+    }
+
+    window.parent.postMessage(message, parentOrigin)
+  }, [parentOrigin, saveResult])
 
   const onPointerDown = useCallback((event: PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -357,7 +418,7 @@ export function Pixel9aCaseMaskPreview() {
           右回転
         </button>
         <button type="button" className="pixel9a-case-mask__save" onClick={onSave} disabled={!imageItem || !selectedFile || isSaving}>
-          {isSaving ? '生成中' : '印刷PNG生成'}
+          {isSaving ? '生成中' : isShopifyEmbed ? 'Shopifyに送る' : '印刷PNG生成'}
         </button>
       </div>
       {fileError ? <p className="pixel9a-case-mask__error">{fileError}</p> : null}
@@ -368,6 +429,11 @@ export function Pixel9aCaseMaskPreview() {
           <a href={saveResult.composed_image_url} target="_blank" rel="noreferrer">
             composed_image_url
           </a>
+          {!isShopifyEmbed && parentOrigin !== '*' ? (
+            <button type="button" className="pixel9a-case-mask__save" onClick={sendDesignToShopify}>
+              このデザインで購入へ
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="pixel9a-case-mask__stage">
