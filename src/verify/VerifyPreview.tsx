@@ -9,7 +9,12 @@ import {
   useState,
 } from 'react'
 import { fetchPrintSpec, type PrintSpec } from './fetchPrintSpec'
-import { fetchAndParseSvgPath, type SvgPathResult } from './parseSvgPath'
+import {
+  fetchAndParseGripCaseClip,
+  fetchAndParseSvgPath,
+  svgPathToShape,
+  type SvgShapeResult,
+} from './parseSvgPath'
 
 const IMAGE_MIN_SCALE = 0.1
 const IMAGE_MAX_SCALE = 4
@@ -88,6 +93,21 @@ function readNaturalSize(src: string): Promise<{ width: number; height: number }
   })
 }
 
+function deriveBaseImageUrl(printAreaSvgUrl: string): string | null {
+  if (printAreaSvgUrl.endsWith('_clip.svg')) {
+    return printAreaSvgUrl.slice(0, -'_clip.svg'.length) + '_base.png'
+  }
+  if (printAreaSvgUrl.endsWith('/clip.svg')) {
+    return printAreaSvgUrl.slice(0, -'clip.svg'.length) + 'base.png'
+  }
+  return null
+}
+
+function sameViewBox(a: SvgShapeResult, b: SvgShapeResult | null): boolean {
+  if (!b) return true
+  return a.viewBox.width === b.viewBox.width && a.viewBox.height === b.viewBox.height
+}
+
 export function VerifyPreview({ variant }: { variant: string }) {
   const clipId = useId().replace(/:/g, '')
 
@@ -95,22 +115,26 @@ export function VerifyPreview({ variant }: { variant: string }) {
   const [specError, setSpecError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const [printAreaPath, setPrintAreaPath] = useState<SvgPathResult | null>(null)
+  const [printAreaShape, setPrintAreaShape] = useState<SvgShapeResult | null>(null)
   const [printAreaError, setPrintAreaError] = useState<string | null>(null)
-  const [safeAreaPath, setSafeAreaPath] = useState<SvgPathResult | null>(null)
-  const [bleedAreaPath, setBleedAreaPath] = useState<SvgPathResult | null>(null)
+  const [safeAreaShape, setSafeAreaShape] = useState<SvgShapeResult | null>(null)
+  const [bleedAreaShape, setBleedAreaShape] = useState<SvgShapeResult | null>(null)
   const [showSafeArea, setShowSafeArea] = useState(true)
   const [showBleedArea, setShowBleedArea] = useState(true)
 
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [transform, setTransform] = useState<ImageTransform | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
-  const [baseImageSize, setBaseImageSize] = useState<PreviewSize | null>(null)
+  const [loadedBaseImage, setLoadedBaseImage] = useState<{ url: string; size: PreviewSize } | null>(null)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
   const pointersRef = useRef(new Map<number, DOMPoint>())
   const gestureRef = useRef<GestureState | null>(null)
   const transformRef = useRef<ImageTransform | null>(null)
+  const activeBaseImageUrl = spec
+    ? spec.print_spec.base_image_url ?? deriveBaseImageUrl(spec.print_spec.print_area_svg_url)
+    : null
+  const baseImageSize = loadedBaseImage?.url === activeBaseImageUrl ? loadedBaseImage.size : null
 
   useEffect(() => {
     transformRef.current = transform
@@ -124,32 +148,42 @@ export function VerifyPreview({ variant }: { variant: string }) {
       setLoading(true)
       setSpecError(null)
       setPrintAreaError(null)
+      setPrintAreaShape(null)
+      setSafeAreaShape(null)
+      setBleedAreaShape(null)
 
       try {
         const data = await fetchPrintSpec(variant)
         if (cancelled) return
         setSpec(data)
 
-        // Fetch print_area SVG (required)
         try {
-          const pa = await fetchAndParseSvgPath(data.print_spec.print_area_svg_url)
-          if (!cancelled) setPrintAreaPath(pa)
+          const parts = await fetchAndParseGripCaseClip(data.print_spec.print_area_svg_url)
+          if (!cancelled) {
+            setPrintAreaShape(parts.printArea)
+            setSafeAreaShape(parts.safeArea)
+            setBleedAreaShape(parts.bleedArea)
+          }
         } catch (e) {
-          if (!cancelled) setPrintAreaError(e instanceof Error ? e.message : 'SVG 解析失敗')
-        }
+          try {
+            const pa = svgPathToShape(await fetchAndParseSvgPath(data.print_spec.print_area_svg_url))
+            if (!cancelled) setPrintAreaShape(pa)
 
-        // Fetch optional SVGs
-        if (data.print_spec.safe_area_svg_url) {
-          try {
-            const sa = await fetchAndParseSvgPath(data.print_spec.safe_area_svg_url)
-            if (!cancelled) setSafeAreaPath(sa)
-          } catch { /* ignore */ }
-        }
-        if (data.print_spec.bleed_area_svg_url) {
-          try {
-            const ba = await fetchAndParseSvgPath(data.print_spec.bleed_area_svg_url)
-            if (!cancelled) setBleedAreaPath(ba)
-          } catch { /* ignore */ }
+            if (data.print_spec.safe_area_svg_url) {
+              try {
+                const sa = svgPathToShape(await fetchAndParseSvgPath(data.print_spec.safe_area_svg_url))
+                if (!cancelled) setSafeAreaShape(sa)
+              } catch { /* ignore */ }
+            }
+            if (data.print_spec.bleed_area_svg_url) {
+              try {
+                const ba = svgPathToShape(await fetchAndParseSvgPath(data.print_spec.bleed_area_svg_url))
+                if (!cancelled) setBleedAreaShape(ba)
+              } catch { /* ignore */ }
+            }
+          } catch {
+            if (!cancelled) setPrintAreaError(e instanceof Error ? e.message : 'SVG 解析失敗')
+          }
         }
       } catch (e) {
         if (!cancelled) setSpecError(e instanceof Error ? e.message : 'Unknown error')
@@ -164,20 +198,19 @@ export function VerifyPreview({ variant }: { variant: string }) {
 
   useEffect(() => {
     let cancelled = false
-    const baseImageUrl = spec?.print_spec.base_image_url
-    setBaseImageSize(null)
+    const baseImageUrl = activeBaseImageUrl
     if (!baseImageUrl) return
 
     readNaturalSize(baseImageUrl)
       .then(size => {
-        if (!cancelled) setBaseImageSize(size)
+        if (!cancelled) setLoadedBaseImage({ url: baseImageUrl, size })
       })
       .catch(() => {
-        if (!cancelled) setBaseImageSize(null)
+        if (!cancelled) setLoadedBaseImage(null)
       })
 
     return () => { cancelled = true }
-  }, [spec?.print_spec.base_image_url])
+  }, [activeBaseImageUrl])
 
   // Image file handling
   const onFile = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
@@ -200,9 +233,9 @@ export function VerifyPreview({ variant }: { variant: string }) {
 
     try {
       const size = await readNaturalSize(url)
-      if (!printAreaPath) return
+      if (!printAreaShape) return
 
-      const canvas = baseImageSize ?? printAreaPath.viewBox
+      const canvas = baseImageSize ?? printAreaShape.viewBox
       const coverScale = Math.max(canvas.width / size.width, canvas.height / size.height)
 
       setImageUrl(url)
@@ -218,7 +251,7 @@ export function VerifyPreview({ variant }: { variant: string }) {
       URL.revokeObjectURL(url)
       setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
     }
-  }, [baseImageSize, imageUrl, printAreaPath])
+  }, [baseImageSize, imageUrl, printAreaShape])
 
   useEffect(() => {
     return () => { if (imageUrl) URL.revokeObjectURL(imageUrl) }
@@ -340,21 +373,25 @@ export function VerifyPreview({ variant }: { variant: string }) {
   if (specError) return <p style={{ color: 'red' }}>Error: {specError}</p>
   if (!spec) return <p style={{ color: 'red' }}>spec not loaded</p>
 
-  const svgPathSize = printAreaPath?.viewBox
-  const canvasSize = svgPathSize ? (baseImageSize ?? svgPathSize) : null
+  const baseImageUrl = activeBaseImageUrl
+  const clipSize = printAreaShape?.viewBox
+  const canvasSize = clipSize ? (baseImageSize ?? clipSize) : null
   const viewBoxAttr = canvasSize ? `0 0 ${canvasSize.width} ${canvasSize.height}` : undefined
-  // 暫定対応：base image と SVG の座標系統一は将来再検討。
-  // 現在は余白込み base image をキャンバスにし、SVG viewBox を中央寄せ + contain で重ねる。
-  const guideScale = canvasSize && svgPathSize
-    ? Math.min(canvasSize.width / svgPathSize.width, canvasSize.height / svgPathSize.height)
+  const needsLegacyGuideTransform = Boolean(
+    baseImageSize && clipSize && (baseImageSize.width !== clipSize.width || baseImageSize.height !== clipSize.height),
+  )
+  const guideScale = needsLegacyGuideTransform && canvasSize && clipSize
+    ? Math.min(canvasSize.width / clipSize.width, canvasSize.height / clipSize.height)
     : 1
-  const guideOffsetX = canvasSize && svgPathSize
-    ? (canvasSize.width - svgPathSize.width * guideScale) / 2
+  const guideOffsetX = needsLegacyGuideTransform && canvasSize && clipSize
+    ? (canvasSize.width - clipSize.width * guideScale) / 2
     : 0
-  const guideOffsetY = canvasSize && svgPathSize
-    ? (canvasSize.height - svgPathSize.height * guideScale) / 2
+  const guideOffsetY = needsLegacyGuideTransform && canvasSize && clipSize
+    ? (canvasSize.height - clipSize.height * guideScale) / 2
     : 0
-  const guideTransform = `translate(${guideOffsetX} ${guideOffsetY}) scale(${guideScale})`
+  const guideTransform = needsLegacyGuideTransform
+    ? `translate(${guideOffsetX} ${guideOffsetY}) scale(${guideScale})`
+    : undefined
 
   const transformAttr = transform
     ? `translate(${transform.centerX} ${transform.centerY}) rotate(${radToDeg(transform.rotationRad)}) scale(${transform.scale})`
@@ -371,7 +408,10 @@ export function VerifyPreview({ variant }: { variant: string }) {
         imageHeight: Math.round(transform.imageHeight * 100) / 100,
         canvasWidth: canvasSize ? Math.round(canvasSize.width * 100) / 100 : null,
         canvasHeight: canvasSize ? Math.round(canvasSize.height * 100) / 100 : null,
-        guideScale: Math.round(guideScale * 1000) / 1000,
+        clipViewBoxWidth: clipSize ? Math.round(clipSize.width * 100) / 100 : null,
+        clipViewBoxHeight: clipSize ? Math.round(clipSize.height * 100) / 100 : null,
+        guideScale: needsLegacyGuideTransform ? Math.round(guideScale * 1000) / 1000 : 1,
+        baseImageUrl,
       }
     : null
 
@@ -393,13 +433,13 @@ export function VerifyPreview({ variant }: { variant: string }) {
           <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
           画像を選ぶ
         </label>
-        {safeAreaPath && (
+        {safeAreaShape && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={showSafeArea} onChange={e => setShowSafeArea(e.target.checked)} />
             Safe Area
           </label>
         )}
-        {bleedAreaPath && (
+        {bleedAreaShape && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={showBleedArea} onChange={e => setShowBleedArea(e.target.checked)} />
             Bleed Area
@@ -412,7 +452,7 @@ export function VerifyPreview({ variant }: { variant: string }) {
       {printAreaError && <p style={{ color: 'red' }}>Print Area SVG: {printAreaError}</p>}
 
       {/* SVG Preview */}
-      {printAreaPath && canvasSize && viewBoxAttr && (
+      {printAreaShape && canvasSize && viewBoxAttr && (
         <div style={{ border: '1px solid #ddd', borderRadius: 8, overflow: 'hidden', background: '#f7f8fa' }}>
           <svg
             ref={svgRef}
@@ -425,34 +465,62 @@ export function VerifyPreview({ variant }: { variant: string }) {
             onPointerCancel={onPointerEnd}
             onWheel={onWheel}
           >
+            <style>
+              {`
+                .verify-preview__part--paper * {
+                  fill: #fff !important;
+                  stroke: #d1d5db !important;
+                  stroke-width: 1 !important;
+                  vector-effect: non-scaling-stroke;
+                }
+                .verify-preview__clip-shape * {
+                  fill: #000 !important;
+                  stroke: none !important;
+                }
+                .verify-preview__part--print * {
+                  fill: none !important;
+                  stroke: rgba(0, 153, 255, 0.72) !important;
+                  stroke-width: 2 !important;
+                  vector-effect: non-scaling-stroke;
+                }
+                .verify-preview__part--safe * {
+                  fill: none !important;
+                  stroke: rgba(255, 0, 0, 0.58) !important;
+                  stroke-width: 3 !important;
+                  stroke-dasharray: 8 4 !important;
+                  vector-effect: non-scaling-stroke;
+                }
+                .verify-preview__part--bleed * {
+                  fill: none !important;
+                  stroke: rgba(0, 180, 70, 0.58) !important;
+                  stroke-width: 3 !important;
+                  stroke-dasharray: 8 4 !important;
+                  vector-effect: non-scaling-stroke;
+                }
+              `}
+            </style>
             <defs>
               <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
-                <g transform={guideTransform}>
-                  <path
-                    d={printAreaPath.d}
-                    fillRule={printAreaPath.fillRule}
-                    clipRule={printAreaPath.fillRule}
-                  />
-                </g>
+                <g
+                  className="verify-preview__clip-shape"
+                  transform={guideTransform}
+                  dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
+                />
               </clipPath>
             </defs>
 
             {/* White background in print area shape */}
-            <g transform={guideTransform}>
-              <path
-                d={printAreaPath.d}
-                fill="#ffffff"
-                fillRule={printAreaPath.fillRule}
-                stroke="#ccc"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
+            <g className="verify-preview__part--paper">
+              <g
+                transform={guideTransform}
+                dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
               />
             </g>
 
             {/* Base image */}
-            {spec.print_spec.base_image_url && (
+            {baseImageUrl && (
               <image
-                href={spec.print_spec.base_image_url}
+                href={baseImageUrl}
                 x="0"
                 y="0"
                 width={canvasSize.width}
@@ -460,6 +528,12 @@ export function VerifyPreview({ variant }: { variant: string }) {
                 preserveAspectRatio="none"
               />
             )}
+
+            {!sameViewBox(printAreaShape, safeAreaShape) || !sameViewBox(printAreaShape, bleedAreaShape) ? (
+              <text x="12" y="24" fill="#b45309" fontSize="14">
+                guide viewBox mismatch
+              </text>
+            ) : null}
 
             {/* User image clipped to print area */}
             {imageUrl && transform && transformAttr && (
@@ -478,44 +552,30 @@ export function VerifyPreview({ variant }: { variant: string }) {
             )}
 
             {/* Safe area overlay */}
-            {showSafeArea && safeAreaPath && (
-              <g transform={guideTransform}>
-                <path
-                  d={safeAreaPath.d}
-                  fill="none"
-                  fillRule={safeAreaPath.fillRule}
-                  stroke="rgba(255,0,0,0.5)"
-                  strokeWidth="3"
-                  strokeDasharray="8 4"
-                  vectorEffect="non-scaling-stroke"
+            {showSafeArea && safeAreaShape && (
+              <g className="verify-preview__part--safe">
+                <g
+                  transform={guideTransform}
+                  dangerouslySetInnerHTML={{ __html: safeAreaShape.markup }}
                 />
               </g>
             )}
 
             {/* Bleed area overlay */}
-            {showBleedArea && bleedAreaPath && (
-              <g transform={guideTransform}>
-                <path
-                  d={bleedAreaPath.d}
-                  fill="none"
-                  fillRule={bleedAreaPath.fillRule}
-                  stroke="rgba(0,200,0,0.5)"
-                  strokeWidth="3"
-                  strokeDasharray="8 4"
-                  vectorEffect="non-scaling-stroke"
+            {showBleedArea && bleedAreaShape && (
+              <g className="verify-preview__part--bleed">
+                <g
+                  transform={guideTransform}
+                  dangerouslySetInnerHTML={{ __html: bleedAreaShape.markup }}
                 />
               </g>
             )}
 
             {/* Print area outline (on top) */}
-            <g transform={guideTransform}>
-              <path
-                d={printAreaPath.d}
-                fill="none"
-                fillRule={printAreaPath.fillRule}
-                stroke="rgba(0,153,255,0.7)"
-                strokeWidth="2"
-                vectorEffect="non-scaling-stroke"
+            <g className="verify-preview__part--print">
+              <g
+                transform={guideTransform}
+                dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
               />
             </g>
           </svg>
