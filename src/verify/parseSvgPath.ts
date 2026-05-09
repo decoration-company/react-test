@@ -6,6 +6,8 @@ export type SvgPathResult = {
 
 export type SvgShapeResult = {
   markup: string
+  clipMarkup: string
+  imageFillMarkup: string
   viewBox: { width: number; height: number }
 }
 
@@ -15,16 +17,42 @@ export type GripCaseClipParts = {
   bleedArea: SvgShapeResult | null
 }
 
+const SVG_LOG_PREFIX = '[verify-svg]'
+
+function logSvg(message: string, data?: unknown): void {
+  console.info(`${SVG_LOG_PREFIX} ${message}`, data ?? '')
+}
+
 function normalizeFillRule(value: string | null): 'nonzero' | 'evenodd' | null {
   if (value === 'evenodd' || value === 'even-odd') return 'evenodd'
   if (value === 'nonzero' || value === 'non-zero') return 'nonzero'
   return null
 }
 
+function styleProperty(style: string | null, property: string): string | null {
+  if (!style) return null
+  const parts = style.split(';')
+  for (const part of parts) {
+    const [name, ...valueParts] = part.split(':')
+    if (name?.trim().toLowerCase() === property) {
+      return valueParts.join(':').trim().toLowerCase()
+    }
+  }
+  return null
+}
+
+function elementFillRule(el: Element): 'nonzero' | 'evenodd' | null {
+  return (
+    normalizeFillRule(el.getAttribute('fill-rule') ?? el.getAttribute('clip-rule')) ??
+    normalizeFillRule(styleProperty(el.getAttribute('style'), 'fill-rule')) ??
+    normalizeFillRule(styleProperty(el.getAttribute('style'), 'clip-rule'))
+  )
+}
+
 function inheritedFillRule(pathEl: SVGPathElement, svgEl: SVGSVGElement): 'nonzero' | 'evenodd' {
   let node: Element | null = pathEl
   while (node && node !== svgEl.parentElement) {
-    const rule = normalizeFillRule(node.getAttribute('fill-rule') ?? node.getAttribute('clip-rule'))
+    const rule = elementFillRule(node)
     if (rule) return rule
     node = node.parentElement
   }
@@ -138,7 +166,72 @@ function stripUnsafeSvgNodes(root: Element): void {
   })
 }
 
-function serializeSvgPart(doc: Document, partId: string): string | null {
+function isPaintableSvgElement(el: Element): boolean {
+  return [
+    'circle',
+    'ellipse',
+    'path',
+    'polygon',
+    'polyline',
+    'rect',
+  ].includes(el.localName)
+}
+
+function normalizeClipSvgPart(root: Element): void {
+  const elements = [root, ...root.querySelectorAll('*')]
+  elements.forEach(el => {
+    const fillRule = elementFillRule(el)
+
+    el.removeAttribute('class')
+    el.removeAttribute('style')
+    el.removeAttribute('opacity')
+    el.removeAttribute('fill-opacity')
+    el.removeAttribute('stroke-opacity')
+    el.removeAttribute('stroke-width')
+    el.removeAttribute('stroke-linecap')
+    el.removeAttribute('stroke-linejoin')
+    el.removeAttribute('vector-effect')
+
+    if (isPaintableSvgElement(el)) {
+      el.setAttribute('fill', '#000')
+      el.setAttribute('stroke', 'none')
+      el.setAttribute('fill-opacity', '1')
+      if (fillRule) {
+        el.setAttribute('fill-rule', fillRule)
+        el.setAttribute('clip-rule', fillRule)
+      }
+    }
+  })
+}
+
+function normalizeImageFillSvgPart(root: Element): void {
+  const elements = [root, ...root.querySelectorAll('*')]
+  elements.forEach(el => {
+    const fillRule = elementFillRule(el)
+
+    el.removeAttribute('class')
+    el.removeAttribute('style')
+    el.removeAttribute('opacity')
+    el.removeAttribute('fill-opacity')
+    el.removeAttribute('stroke-opacity')
+    el.removeAttribute('stroke-width')
+    el.removeAttribute('stroke-linecap')
+    el.removeAttribute('stroke-linejoin')
+    el.removeAttribute('vector-effect')
+
+    if (isPaintableSvgElement(el)) {
+      el.setAttribute('fill', '#000')
+      el.setAttribute('stroke', 'none')
+      el.setAttribute('fill-opacity', '1')
+      if (fillRule) {
+        el.setAttribute('fill-rule', fillRule)
+        el.setAttribute('clip-rule', fillRule)
+      }
+    }
+  })
+}
+
+function serializeSvgPart(doc: Document, partId: string): SvgShapeResult['markup'] | null {
   const source = doc.getElementById(partId)
   if (!source) return null
 
@@ -148,20 +241,89 @@ function serializeSvgPart(doc: Document, partId: string): string | null {
   return new XMLSerializer().serializeToString(clone)
 }
 
+function serializeClipSvgPart(doc: Document, partId: string): SvgShapeResult['clipMarkup'] | null {
+  const source = doc.getElementById(partId)
+  if (!source) return null
+
+  const clone = source.cloneNode(true) as Element
+  clone.removeAttribute('id')
+  stripUnsafeSvgNodes(clone)
+  normalizeClipSvgPart(clone)
+  return new XMLSerializer().serializeToString(clone)
+}
+
+function serializeImageFillSvgPart(doc: Document, partId: string): SvgShapeResult['imageFillMarkup'] | null {
+  const source = doc.getElementById(partId)
+  if (!source) return null
+
+  const clone = source.cloneNode(true) as Element
+  clone.removeAttribute('id')
+  stripUnsafeSvgNodes(clone)
+  normalizeImageFillSvgPart(clone)
+  return new XMLSerializer().serializeToString(clone)
+}
+
+function describeSvgPart(doc: Document, partId: string): Record<string, unknown> | null {
+  const source = doc.getElementById(partId)
+  if (!source) return null
+
+  const paintable = [source, ...source.querySelectorAll('*')].filter(isPaintableSvgElement)
+  const paths = [...source.querySelectorAll('path')]
+  return {
+    tag: source.localName,
+    childElementCount: source.children.length,
+    paintableCount: paintable.length,
+    pathCount: paths.length,
+    hasInlineStyle: [source, ...source.querySelectorAll('*')].some(el => el.hasAttribute('style')),
+    styles: paths.slice(0, 8).map(path => path.getAttribute('style')),
+    fillRules: paths.slice(0, 8).map(path => elementFillRule(path)),
+    markupLength: new XMLSerializer().serializeToString(source).length,
+  }
+}
+
 export function parseGripCaseClipSvg(svgText: string): GripCaseClipParts {
   const { doc, viewBox } = parseSvgDocument(svgText)
+  logSvg('parseGripCaseClipSvg:start', {
+    textLength: svgText.length,
+    viewBox,
+    printArea: describeSvgPart(doc, 'print_area'),
+    safeArea: describeSvgPart(doc, 'safe_area'),
+    bleedArea: describeSvgPart(doc, 'bleed_area'),
+  })
+
   const printAreaMarkup = serializeSvgPart(doc, 'print_area')
-  if (!printAreaMarkup) {
+  const printAreaClipMarkup = serializeClipSvgPart(doc, 'print_area')
+  const printAreaImageFillMarkup = serializeImageFillSvgPart(doc, 'print_area')
+  if (!printAreaMarkup || !printAreaClipMarkup || !printAreaImageFillMarkup) {
     throw new Error('SVG 解析失敗: #print_area が見つかりません')
   }
 
   const safeAreaMarkup = serializeSvgPart(doc, 'safe_area')
   const bleedAreaMarkup = serializeSvgPart(doc, 'bleed_area')
 
+  logSvg('parseGripCaseClipSvg:done', {
+    printAreaMarkupLength: printAreaMarkup.length,
+    printAreaClipMarkupLength: printAreaClipMarkup.length,
+    printAreaImageFillMarkupLength: printAreaImageFillMarkup.length,
+    safeAreaMarkupLength: safeAreaMarkup?.length ?? 0,
+    bleedAreaMarkupLength: bleedAreaMarkup?.length ?? 0,
+    printAreaClipMarkupPreview: printAreaClipMarkup.slice(0, 500),
+    printAreaImageFillMarkupPreview: printAreaImageFillMarkup.slice(0, 500),
+  })
+
   return {
-    printArea: { markup: printAreaMarkup, viewBox },
-    safeArea: safeAreaMarkup ? { markup: safeAreaMarkup, viewBox } : null,
-    bleedArea: bleedAreaMarkup ? { markup: bleedAreaMarkup, viewBox } : null,
+    printArea: {
+      markup: printAreaMarkup,
+      clipMarkup: printAreaClipMarkup,
+      imageFillMarkup: printAreaImageFillMarkup,
+      viewBox,
+    },
+    safeArea: safeAreaMarkup
+      ? { markup: safeAreaMarkup, clipMarkup: safeAreaMarkup, imageFillMarkup: safeAreaMarkup, viewBox }
+      : null,
+    bleedArea: bleedAreaMarkup
+      ? { markup: bleedAreaMarkup, clipMarkup: bleedAreaMarkup, imageFillMarkup: bleedAreaMarkup, viewBox }
+      : null,
   }
 }
 
@@ -169,12 +331,21 @@ export function svgPathToShape(path: SvgPathResult): SvgShapeResult {
   const fillRule = path.fillRule === 'evenodd' ? 'evenodd' : 'nonzero'
   return {
     markup: `<path d="${path.d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}" fill-rule="${fillRule}" clip-rule="${fillRule}" />`,
+    clipMarkup: `<path d="${path.d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}" fill="#000" stroke="none" fill-rule="${fillRule}" clip-rule="${fillRule}" />`,
+    imageFillMarkup: `<path d="${path.d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')}" fill="#000" stroke="none" fill-rule="${fillRule}" clip-rule="${fillRule}" />`,
     viewBox: path.viewBox,
   }
 }
 
 export async function fetchAndParseGripCaseClip(url: string): Promise<GripCaseClipParts> {
+  logSvg('fetchAndParseGripCaseClip:start', { url })
   const response = await fetch(url)
+  logSvg('fetchAndParseGripCaseClip:response', {
+    url,
+    ok: response.ok,
+    status: response.status,
+    contentType: response.headers.get('content-type'),
+  })
   if (!response.ok) {
     throw new Error(`SVG 取得失敗: HTTP ${response.status}`)
   }
