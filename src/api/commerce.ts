@@ -8,6 +8,17 @@ export type RenderDesignResponse = {
   design_id: string
   composed_image_url: string
   preview_image_url: string
+  width_px?: number
+  height_px?: number
+}
+
+export type ProductRenderPlacement = {
+  centerX: number
+  centerY: number
+  imageWidth: number
+  imageHeight: number
+  scale: number
+  rotationRad: number
 }
 
 function commerceBaseUrl(): string {
@@ -51,3 +62,25 @@ export async function renderDesign(payload: Pixel9aRenderPayload): Promise<Rende
   return parseJsonResponse<RenderDesignResponse>(response)
 }
 
+export async function renderProductVariant(
+  variant: string,
+  payload: {
+    source_image_url: string
+    placement: ProductRenderPlacement
+  },
+): Promise<RenderDesignResponse> {
+  const url = `${commerceBaseUrl()}/api/products/${encodeURIComponent(variant)}/render`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (response.status === 404) {
+    throw new Error(`${url} が 404 です。decocom_commerce を再起動してください。`)
+  }
+
+  return parseJsonResponse<RenderDesignResponse>(response)
+}
