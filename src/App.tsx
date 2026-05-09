@@ -23,7 +23,7 @@ function App() {
 
   return (
     <main id="center">
-      <Pixel9aCaseMaskPreview />
+      <Pixel9aCaseMaskPreview variant={variant} />
     </main>
   )
 }

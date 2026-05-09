@@ -57,7 +57,7 @@
 - **親 → 子（postMessage 受信）**: なし（`message` リスナー未実装）
 - **子 → 親**: `src/pixel9a/Pixel9aCaseMaskPreview.tsx` — `window.parent.postMessage(message, parentOrigin)`
 - **URL クエリ**: `embeddedParentOrigin()` — `origin` または `parent_origin` で `postMessage` の宛先 origin。`isShopifyEmbedUrl()` — `embed=shopify` または `platform=shopify`
-- **メッセージ型**: `type: 'decocom:design:ready'`、`spec_id` / `design_id` / `preview_url` / `composed_image_url`
+- **メッセージ型**: `type: 'decocom:design:ready'`、`preview_url` / `composed_image_url`
 
 ---
 

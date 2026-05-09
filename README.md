@@ -49,17 +49,14 @@ cloudflared tunnel --url http://localhost:5173
 
 Shopify app embed から起動された場合、URLパラメータの `embed=shopify` または `platform=shopify` を見てShopify連携モードに入ります。
 
-Shopify連携モードでは、Phase 2の動作確認を優先して `uploadImage()` / `renderDesign()` は呼びません。つまりローカルの `decocom_commerce` やアリシアAPIには接続せず、editorが仮の `spec_id` とblob URLを即座に親のShopify商品ページへ `postMessage` します。
+Shopify連携モードでは、Phase 2の動作確認を優先して `uploadImage()` / `renderDesign()` は呼びません。つまりローカルの `decocom_commerce` やアリシアAPIには接続せず、editorがblob URLを即座に親のShopify商品ページへ `postMessage` します。
 
 送信するmessage typeは `decocom:design:ready` で、現在は以下のような値を返します。
 
-- `spec_id`: `spec_dev_xxxxxxxxxxxx`
-- `design_id`: `spec_id` と同じ仮値
 - `preview_url`: editorが生成したblob URL
 - `composed_image_url`: `preview_url` と同じblob URL
 
 TODO:
-- 本番時は `decocom_commerce` 経由でデザインデータを保存し、正式な `spec_id` を発行する。
 - preview / composed image はblob URLではなく、Shopify webhook後の処理でも参照できる公開URLにする。
 
 ## Pixel 9a 印刷PNG生成 E2E
@@ -114,11 +111,10 @@ npm run lint
 実運用に向けた未対応項目。
 
 1. blob URL は一時的（ブラウザを閉じると失効）なので、`decocom_commerce` 経由で公開URL化する。
-2. `spec_dev_xxx` は仮値なので、`decocom_commerce` 側でデザインデータ保存後に正式な `spec_id` を発行する。
-3. editor は現在 Pixel 9a のみ対応。ほかの機種へ展開する。
-4. チェックアウト → 注文 → webhook → アリシア連携のE2Eは未確認。
-5. UUUM軸（editor不使用、メタフィールド2つ + `featured_image`）の動作確認は未実施。
-6. ngrok用の `allowedHosts` は残置中。不要になったら整理する。
+2. editor は現在 Pixel 9a のみ対応。ほかの機種へ展開する。
+3. チェックアウト → 注文 → webhook → アリシア連携のE2Eは未確認。
+4. UUUM軸（editor不使用、メタフィールド2つ + `featured_image`）の動作確認は未実施。
+5. ngrok用の `allowedHosts` は残置中。不要になったら整理する。
 
 ## メモ（テンプレ由来）
 
