@@ -1,0 +1,786 @@
+body.tigers-editor-body {
+  background: #ffffff;
+}
+
+body.tigers-editor-body #root {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  border-inline: 0;
+  text-align: initial;
+  color: #212121;
+  background: #ffffff;
+}
+
+body.tigers-editor-body * {
+  box-sizing: border-box;
+}
+
+.tigers-editor,
+.tigers-preview-page {
+  min-height: 100svh;
+  width: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: 0;
+  color: #212121;
+  background: #ffffff;
+}
+
+.tigers-editor {
+  display: flex;
+}
+
+.tigers-editor.is-step-stamp .tigers-editor__left {
+  flex: 3 1 0;
+}
+
+.tigers-editor.is-step-stamp .tigers-editor__right {
+  flex: 5 1 0;
+}
+
+.tigers-editor__left,
+.tigers-editor__right {
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.tigers-editor__left {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #dddddd;
+}
+
+.tigers-editor__right {
+  display: flex;
+  flex-direction: column;
+}
+
+.tigers-editor__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 60px;
+  padding: 12px 16px;
+  background: #ffe500;
+}
+
+.tigers-editor__header h1,
+.tigers-preview-page__appbar h1 {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #000000;
+}
+
+.tigers-editor__header-side,
+.tigers-step-indicator {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tigers-back-button,
+.tigers-preview-page__appbar button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 18px;
+  padding: 0;
+  color: #000000;
+  background: transparent;
+  font-size: 32px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tigers-step-indicator {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+.tigers-step-indicator button {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.2);
+  transition: width 0.3s ease, background-color 0.3s ease;
+  cursor: pointer;
+}
+
+.tigers-step-indicator button.is-active {
+  width: 32px;
+  background: #000000;
+}
+
+.tigers-preview-area {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: #fafafa;
+}
+
+.tigers-selected-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 16px;
+  border: 1.2px solid rgba(255, 225, 0, 0.4);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #000000;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.tigers-selected-ribbon span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tigers-selected-ribbon__icon {
+  width: 10px;
+  height: 16px;
+  border: 2px solid #ffe100;
+  border-radius: 3px;
+}
+
+.tigers-preview-area__center {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  place-items: center;
+}
+
+.tigers-stamp-preview-full {
+  display: grid;
+  place-items: center;
+}
+
+.tigers-stamp-preview-full img {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+}
+
+.tigers-stamp-preview-full img.is-empty {
+  opacity: 0.3;
+}
+
+.tigers-section-title {
+  padding: 12px 20px 8px;
+  text-align: center;
+}
+
+.tigers-section-title h2 {
+  margin: 0 0 4px;
+  color: #333333;
+  font-size: 18px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.tigers-section-title p {
+  margin: 0;
+  color: #757575;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tigers-selection-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 0;
+}
+
+.tigers-stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 20px;
+}
+
+.tigers-stamp-card,
+.tigers-additional-stamp-card {
+  position: relative;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  width: 100%;
+  border: 2px solid #dddddd;
+  border-radius: 10px;
+  padding: 8px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.tigers-stamp-card.is-selected {
+  border-width: 3px;
+  border-color: #ffe500;
+  background: #fffbef;
+}
+
+.tigers-stamp-card img,
+.tigers-additional-stamp-card img {
+  width: min(100%, 100px);
+  height: min(100%, 100px);
+  object-fit: contain;
+}
+
+.tigers-check-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffe500;
+  color: #000000;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.tigers-layout-selection,
+.tigers-background-selection {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 28px;
+}
+
+.tigers-layout-options,
+.tigers-background-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px 12px;
+  padding: 0 20px;
+}
+
+.tigers-layout-option,
+.tigers-background-option {
+  display: flex;
+  width: 70px;
+  min-width: 70px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #333333;
+  cursor: pointer;
+}
+
+.tigers-layout-option__phone,
+.tigers-background-option__thumb {
+  display: block;
+  width: 70px;
+  height: 130px;
+  overflow: hidden;
+  border: 3px solid #dddddd;
+  border-radius: 18px;
+  background-color: #f0f0f0;
+  transition: border-width 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.tigers-layout-option.is-selected .tigers-layout-option__phone,
+.tigers-background-option.is-selected .tigers-background-option__thumb {
+  border-width: 4px;
+  border-color: #ffe500;
+  background-color: #fffbef;
+  box-shadow: 0 4px 12px rgba(255, 229, 0, 0.4);
+}
+
+.tigers-background-option__thumb {
+  border-width: 0;
+  background-size: cover;
+  background-position: center;
+}
+
+.tigers-background-option__thumb:not([style]) {
+  background:
+    linear-gradient(45deg, #f4f4f4 25%, transparent 25%),
+    linear-gradient(-45deg, #f4f4f4 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f4f4f4 75%),
+    linear-gradient(-45deg, transparent 75%, #f4f4f4 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  background-color: #ffffff;
+}
+
+.tigers-layout-option__name {
+  min-height: 30px;
+  color: #333333;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 500;
+  text-align: center;
+}
+
+.tigers-layout-option.is-selected .tigers-layout-option__name {
+  color: #000000;
+  font-weight: 700;
+}
+
+.tigers-selection-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: #dddddd;
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.is-selected > .tigers-selection-dot {
+  width: 24px;
+  background: #ffe500;
+}
+
+.tigers-layout-icon {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.tigers-layout-icon > img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+}
+
+.tigers-layout-icon.is-one-point > img {
+  top: auto;
+  right: 5px;
+  bottom: 0;
+  left: auto;
+  width: 20px;
+  height: 20px;
+  transform: rotate(-20deg);
+  transform-origin: top left;
+}
+
+.tigers-layout-icon .is-center {
+  width: 28px;
+  height: 28px;
+}
+
+.tigers-layout-icon .is-bottom-right {
+  top: auto;
+  right: 5px;
+  bottom: 0;
+  left: auto;
+  width: 20px;
+  height: 20px;
+  transform: rotate(-20deg);
+  transform-origin: top left;
+}
+
+.tigers-layout-icon .is-faded {
+  opacity: 0.3;
+}
+
+.tigers-layout-icon.is-pattern {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  align-content: center;
+  padding: 8px;
+}
+
+.tigers-layout-icon.is-pattern img {
+  position: static;
+  width: 18px;
+  height: 18px;
+  transform: none;
+}
+
+.tigers-additional-stamps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tigers-divider {
+  height: 2px;
+  margin: 8px 20px 0;
+  background: #dddddd;
+}
+
+.tigers-additional-stamps__title {
+  margin: 0;
+  color: #333333;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tigers-stamp-slots {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.tigers-stamp-slot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 4px;
+  background: #fafafa;
+  cursor: pointer;
+}
+
+.tigers-stamp-slot.has-stamp {
+  border-color: #ffe500;
+  background: #fffbef;
+}
+
+.tigers-stamp-slot.is-active {
+  border-width: 4px;
+  border-color: #ff6600;
+  box-shadow: 0 0 0 2px rgba(255, 102, 0, 0.2);
+}
+
+.tigers-stamp-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tigers-stamp-slot span {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #9e9e9e;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tigers-stamp-slot.has-stamp span {
+  background: #ffe500;
+  color: #000000;
+}
+
+.tigers-background-selection__name {
+  margin: 0;
+  color: #333333;
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 700;
+  text-align: center;
+}
+
+.tigers-editor__footer,
+.tigers-preview-page__footer {
+  padding: 8px 20px 12px;
+  background: #ffffff;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.tigers-primary-button {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 16px;
+  background: #ffe500;
+  color: #000000;
+  font-size: 16px;
+  line-height: 1.2;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tigers-primary-button:disabled {
+  background: #dddddd;
+  color: #757575;
+  cursor: default;
+}
+
+.tigers-design-preview {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.tigers-design-preview__phone-shell {
+  position: relative;
+  width: min(100%, 190px);
+  max-height: 100%;
+  aspect-ratio: 166.8 / 350.2;
+  border: 2px solid #e0e0e0;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.tigers-design-preview--print .tigers-design-preview__phone-shell {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.tigers-design-preview__camera {
+  position: absolute;
+  z-index: 4;
+  top: 12px;
+  left: 12px;
+  width: 52px;
+  height: 52px;
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.tigers-design-preview__camera::before,
+.tigers-design-preview__camera::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: #222222;
+}
+
+.tigers-design-preview__camera::before {
+  top: 7px;
+  left: 7px;
+  width: 16px;
+  height: 16px;
+  box-shadow: 21px 21px 0 #222222;
+}
+
+.tigers-design-preview__camera::after {
+  right: 8px;
+  top: 9px;
+  width: 7px;
+  height: 7px;
+  background: #d8d8d8;
+}
+
+.tigers-design-preview__design-area,
+.tigers-design-preview__case-color,
+.tigers-design-preview__background,
+.tigers-design-preview__pattern {
+  position: absolute;
+  inset: 0;
+}
+
+.tigers-design-preview__background {
+  background-size: cover;
+  background-position: center;
+}
+
+.tigers-design-preview__stamp-slot {
+  position: absolute;
+  display: flex;
+}
+
+.tigers-design-preview__stamp-slot.is-center {
+  align-items: center;
+  justify-content: center;
+}
+
+.tigers-design-preview__stamp-slot.is-bottom-right {
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.tigers-design-preview__stamp-slot img {
+  display: block;
+  height: auto;
+}
+
+.tigers-design-preview__pattern {
+  overflow: hidden;
+}
+
+.tigers-design-preview__pattern img {
+  position: absolute;
+  object-fit: contain;
+}
+
+.tigers-preview-page {
+  display: flex;
+  flex-direction: column;
+  background: #f8f8f8;
+}
+
+.tigers-preview-page__appbar {
+  display: grid;
+  grid-template-columns: 48px 1fr 48px;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 8px;
+  background: #ffffff;
+}
+
+.tigers-preview-page__appbar h1 {
+  justify-self: center;
+  color: #212121;
+  font-size: 16px;
+}
+
+.tigers-preview-page__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 16px;
+}
+
+.tigers-preview-page__mockup {
+  display: grid;
+  place-items: center;
+  height: 280px;
+}
+
+.tigers-preview-card {
+  padding: 16px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+
+.tigers-preview-card h2 {
+  margin: 0 0 8px;
+  color: #212121;
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.tigers-preview-card p {
+  margin: 0;
+  color: #757575;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tigers-preview-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: #757575;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tigers-preview-note span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #757575;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tigers-preview-note p {
+  margin: 0;
+}
+
+.tigers-preview-page__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 16px 16px;
+}
+
+.tigers-gallery-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #212121;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tigers-gallery-check input {
+  width: 20px;
+  height: 20px;
+  accent-color: #ffe100;
+}
+
+@media (max-width: 767px) {
+  .tigers-editor {
+    flex-direction: column;
+  }
+
+  .tigers-editor__left {
+    flex: 0 0 auto;
+    border-right: 0;
+  }
+
+  .tigers-editor__right {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .tigers-preview-area {
+    height: 420px;
+    flex: 0 0 auto;
+    padding: 24px 16px;
+  }
+
+  .tigers-editor.is-step-stamp .tigers-preview-area {
+    height: 280px;
+  }
+
+  .tigers-design-preview__phone-shell {
+    width: min(100%, 180px);
+  }
+}
+
+@media (max-width: 379px) {
+  .tigers-preview-page__mockup {
+    height: 260px;
+  }
+
+  .tigers-section-title h2 {
+    font-size: 17px;
+  }
+
+  .tigers-stamp-grid {
+    gap: 10px;
+  }
+}

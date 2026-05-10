@@ -1,5 +1,6 @@
 import { Pixel9aCaseMaskPreview } from './pixel9a/Pixel9aCaseMaskPreview'
 import { RenderTestPage } from './test/RenderTestPage'
+import { TigersEditor } from './tigers/TigersEditor'
 import { VerifyPreview } from './verify/VerifyPreview'
 import './App.css'
 
@@ -19,6 +20,10 @@ function App() {
         <VerifyPreview variant={variant} />
       </main>
     )
+  }
+
+  if (path === '/tigers') {
+    return <TigersEditor variant={variant} />
   }
 
   return (
