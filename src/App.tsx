@@ -1,4 +1,5 @@
 import { Pixel9aCaseMaskPreview } from './pixel9a/Pixel9aCaseMaskPreview'
+import { GarupanEditor } from './garupan/GarupanEditor'
 import { RenderTestPage } from './test/RenderTestPage'
 import { TigersEditor } from './tigers/TigersEditor'
 import { VerifyPreview } from './verify/VerifyPreview'
@@ -24,6 +25,10 @@ function App() {
 
   if (path === '/tigers') {
     return <TigersEditor variant={variant} />
+  }
+
+  if (path === '/garupan') {
+    return <GarupanEditor variant={variant} />
   }
 
   return (

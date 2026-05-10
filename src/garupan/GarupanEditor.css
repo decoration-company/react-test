@@ -1,0 +1,472 @@
+body.garupan-editor-body {
+  margin: 0;
+  background: #fff6e8;
+  color: #212121;
+}
+
+body.garupan-editor-body #root {
+  min-height: 100vh;
+}
+
+body.garupan-editor-body * {
+  box-sizing: border-box;
+}
+
+.garupan-editor,
+.garupan-preview-page {
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.garupan-editor {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  background: #fff6e8;
+}
+
+.garupan-appbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 12px 18px;
+  background: #f5a000;
+  color: #fff;
+  box-shadow: 0 1px 0 rgb(0 0 0 / 12%);
+}
+
+.garupan-appbar p {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.9;
+}
+
+.garupan-appbar h1 {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.garupan-back-button,
+.garupan-primary-button {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.garupan-back-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 22%);
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.garupan-primary-button {
+  min-width: 112px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 8px;
+  background: #2b2b2b;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.garupan-editor__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  min-height: 0;
+}
+
+.garupan-editor__stage {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+}
+
+.garupan-canvas-wrap {
+  display: grid;
+  place-items: center;
+  width: min(100%, 380px);
+  min-height: 0;
+}
+
+.garupan-canvas {
+  display: block;
+  width: min(100%, 340px);
+  max-height: calc(100vh - 250px);
+  aspect-ratio: 207.87 / 441.93;
+  touch-action: none;
+  filter: drop-shadow(0 18px 32px rgb(70 43 0 / 18%));
+}
+
+.garupan-canvas__base {
+  fill: #fafafa;
+  stroke: #d7d0c2;
+  stroke-width: 1.2;
+}
+
+.garupan-canvas__outline {
+  fill: transparent;
+  stroke: #333;
+  stroke-width: 1.2;
+  pointer-events: none;
+}
+
+.garupan-stamp-node {
+  cursor: grab;
+  user-select: none;
+}
+
+.garupan-stamp-node:active {
+  cursor: grabbing;
+}
+
+.garupan-stamp-node rect {
+  fill: rgb(255 255 255 / 78%);
+  stroke: #f08200;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.garupan-stamp-node text {
+  paint-order: stroke;
+  stroke: rgb(255 255 255 / 72%);
+  stroke-width: 3px;
+}
+
+.garupan-tool-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  background: #fff;
+  border-left: 1px solid #e3dccf;
+}
+
+.garupan-tool-panel p {
+  margin: 0;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.garupan-tool-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+}
+
+.garupan-tool-panel__title span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: #fff6e8;
+  font-size: 24px;
+}
+
+.garupan-tool-panel label {
+  display: grid;
+  gap: 8px;
+  color: #333;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.garupan-tool-panel input {
+  width: 100%;
+  accent-color: #f08200;
+}
+
+.garupan-tool-panel__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.garupan-tool-panel__actions button {
+  min-height: 38px;
+  border: 1px solid #d8d8d8;
+  border-radius: 8px;
+  background: #fff;
+  color: #222;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.garupan-tool-panel__actions button.is-danger {
+  border-color: #ffd1c9;
+  color: #b43a24;
+}
+
+.garupan-bottom-menu {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: 72px;
+  background: #fff;
+  border-top: 1px solid #e3dccf;
+}
+
+.garupan-bottom-menu button {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 3px;
+  border: 0;
+  border-right: 1px solid #f0ede8;
+  background: #fff;
+  color: #333;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.garupan-bottom-menu button:last-child {
+  border-right: 0;
+}
+
+.garupan-bottom-menu button.is-active {
+  background: #fff6e8;
+  color: #a85a00;
+}
+
+.garupan-bottom-menu span {
+  font-size: 21px;
+  line-height: 1;
+}
+
+.garupan-sheet {
+  min-height: 186px;
+  max-height: 38vh;
+  overflow: auto;
+  padding: 14px 16px 18px;
+  background: #fff;
+  border-top: 1px solid #e3dccf;
+  box-shadow: 0 -14px 28px rgb(80 42 0 / 12%);
+}
+
+.garupan-sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.garupan-sheet h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.garupan-sheet header button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #f0f0f0;
+  color: #333;
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.garupan-sheet__caption {
+  margin: 0 0 10px;
+  color: #666;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.garupan-stamp-grid,
+.garupan-template-grid,
+.garupan-background-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.garupan-stamp-grid {
+  grid-template-columns: repeat(5, minmax(72px, 1fr));
+}
+
+.garupan-stamp-grid button,
+.garupan-template-grid button,
+.garupan-background-grid button {
+  min-height: 76px;
+  border: 1px solid #e4e0d8;
+  border-radius: 8px;
+  background: #fff;
+  color: #333;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.garupan-stamp-grid button {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+}
+
+.garupan-stamp-grid button span {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.garupan-template-grid {
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+}
+
+.garupan-template-grid button {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+}
+
+.garupan-template-grid button span {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 74px;
+  border-radius: 6px;
+  background: #fff6e8;
+  font-size: 24px;
+}
+
+.garupan-background-grid {
+  grid-template-columns: repeat(6, minmax(72px, 1fr));
+}
+
+.garupan-background-grid button {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+}
+
+.garupan-background-grid button.is-selected {
+  border-color: #f08200;
+  box-shadow: inset 0 0 0 2px #f08200;
+}
+
+.garupan-background-grid span {
+  width: 42px;
+  height: 42px;
+  border: 1px solid #d7d7d7;
+  border-radius: 50%;
+}
+
+.garupan-preview-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: #fff6e8;
+}
+
+.garupan-preview-page__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 22px;
+  align-items: center;
+  min-height: 0;
+  padding: 22px;
+}
+
+.garupan-preview-card {
+  padding: 18px;
+  border: 1px solid #e3dccf;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.garupan-preview-card h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+
+.garupan-preview-card p {
+  margin: 8px 0;
+  color: #555;
+  font-size: 14px;
+}
+
+.garupan-preview-page__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 18px;
+  background: #fff;
+  border-top: 1px solid #e3dccf;
+}
+
+@media (max-width: 767px) {
+  .garupan-appbar {
+    min-height: 66px;
+    padding: 10px 14px;
+  }
+
+  .garupan-appbar h1 {
+    font-size: 16px;
+  }
+
+  .garupan-editor__main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .garupan-editor__stage {
+    padding: 16px;
+  }
+
+  .garupan-canvas {
+    width: min(100%, 260px);
+    max-height: calc(100vh - 390px);
+  }
+
+  .garupan-tool-panel {
+    min-height: 114px;
+    padding: 12px 14px;
+    border-top: 1px solid #e3dccf;
+    border-left: 0;
+  }
+
+  .garupan-tool-panel label {
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .garupan-tool-panel__actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .garupan-sheet {
+    max-height: 34vh;
+  }
+
+  .garupan-stamp-grid {
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+  }
+
+  .garupan-template-grid {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .garupan-background-grid {
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+  }
+
+  .garupan-preview-page__body {
+    grid-template-columns: 1fr;
+    align-content: start;
+    gap: 16px;
+    padding: 16px;
+  }
+}
