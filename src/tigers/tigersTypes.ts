@@ -51,4 +51,6 @@ export type TigersMockItem = {
   colorName: string
   price: number
   caseColor: string
+  printWidth: number
+  printHeight: number
 }

@@ -537,62 +537,40 @@ body.tigers-editor-body * {
   min-height: 0;
 }
 
-.tigers-design-preview__phone-shell {
-  position: relative;
+.tigers-design-preview__pixel9a-svg {
   width: min(100%, 190px);
   max-height: 100%;
-  aspect-ratio: 166.8 / 350.2;
-  border: 2px solid #e0e0e0;
-  border-radius: 24px;
+  aspect-ratio: 207.87 / 441.93;
+  overflow: visible;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.08));
+}
+
+.tigers-design-preview--print .tigers-design-preview__pixel9a-svg {
+  filter: none;
+}
+
+.tigers-design-preview__pixel9a-base {
+  fill: #ffffff;
+  stroke: transparent;
+  stroke-width: 0;
+  vector-effect: non-scaling-stroke;
+}
+
+.tigers-design-preview__pixel9a-outline {
+  fill: none;
+  stroke: #333333;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.tigers-design-preview__design-area {
+  position: relative;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-.tigers-design-preview--print .tigers-design-preview__phone-shell {
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.tigers-design-preview__camera {
-  position: absolute;
-  z-index: 4;
-  top: 12px;
-  left: 12px;
-  width: 52px;
-  height: 52px;
-  border: 2px solid rgba(0, 0, 0, 0.12);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(2px);
-}
-
-.tigers-design-preview__camera::before,
-.tigers-design-preview__camera::after {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  background: #222222;
-}
-
-.tigers-design-preview__camera::before {
-  top: 7px;
-  left: 7px;
-  width: 16px;
-  height: 16px;
-  box-shadow: 21px 21px 0 #222222;
-}
-
-.tigers-design-preview__camera::after {
-  right: 8px;
-  top: 9px;
-  width: 7px;
-  height: 7px;
-  background: #d8d8d8;
-}
-
-.tigers-design-preview__design-area,
 .tigers-design-preview__case-color,
 .tigers-design-preview__background,
 .tigers-design-preview__pattern {
@@ -766,7 +744,7 @@ body.tigers-editor-body * {
     height: 280px;
   }
 
-  .tigers-design-preview__phone-shell {
+  .tigers-design-preview__pixel9a-svg {
     width: min(100%, 180px);
   }
 }

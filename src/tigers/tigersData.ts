@@ -5,6 +5,7 @@ import type {
   TigersMockItem,
   TigersStamp,
 } from './tigersTypes'
+import { PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX } from '../pixel9a/constants'
 
 const ASSET_BASE = '/assets/tigers'
 
@@ -128,10 +129,12 @@ export const tigersLayouts: TigersLayout[] = [
 ]
 
 export const mockTigersItem: TigersMockItem = {
-  variant: 'mock-tigers-hardcase',
-  modelName: 'iPhone 16 Pro',
+  variant: 'pixel-9a',
+  modelName: 'Google Pixel 9a',
   materialName: 'ハードケース',
-  colorName: 'クリア',
+  colorName: 'ホワイト',
   price: 2980,
   caseColor: '#ffffff',
+  printWidth: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.width,
+  printHeight: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.height,
 }

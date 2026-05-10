@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { PIXEL_9A_CASE_CLIP_PATH_D } from '../pixel9a/constants'
 import type { TigersBackground, TigersLayout, TigersMockItem, TigersStamp } from './tigersTypes'
 
 type TigersDesignPreviewProps = {
@@ -9,52 +9,78 @@ type TigersDesignPreviewProps = {
   mode?: 'mockup' | 'print'
 }
 
-const DESIGN_WIDTH = 166.8
-const DESIGN_HEIGHT = 350.2
-
-function stampSizeWithAspectRatio(stamp: TigersStamp): { width: number; height: number } {
-  const oneSide = DESIGN_WIDTH / 3
+function stampSizeWithAspectRatio(
+  stamp: TigersStamp,
+  designWidth: number,
+): { width: number; height: number } {
+  const oneSide = designWidth / 3
   if (stamp.aspectRatio === 1) return { width: oneSide, height: oneSide }
   if (stamp.aspectRatio > 1) return { width: oneSide, height: oneSide / stamp.aspectRatio }
   return { width: oneSide * stamp.aspectRatio, height: oneSide }
 }
 
-function PatternStamp({ stamp }: { stamp: TigersStamp }) {
-  const base = stampSizeWithAspectRatio(stamp)
+function PatternStamp({
+  stamp,
+  designWidth,
+  designHeight,
+}: {
+  stamp: TigersStamp
+  designWidth: number
+  designHeight: number
+}) {
+  const base = stampSizeWithAspectRatio(stamp, designWidth)
   const sourceWidth = base.width * 0.8
   const sourceHeight = base.height * 0.8
   const gap = Math.max(sourceWidth, sourceHeight) * 1.1
-  const columns = Math.ceil(DESIGN_WIDTH / gap) + 3
-  const rows = Math.ceil(DESIGN_HEIGHT / gap) + 3
+  const columns = Math.ceil(designWidth / gap) + 3
+  const rows = Math.ceil(designHeight / gap) + 3
 
-  return (
-    <div className="tigers-design-preview__pattern">
-      {Array.from({ length: rows }).map((_, row) =>
-        Array.from({ length: columns }).map((__, col) => (
-          <img
+  return Array.from({ length: rows }).flatMap((_, row) =>
+    Array.from({ length: columns }).map((__, col) => (
+          <image
             key={`${row}-${col}`}
-            src={stamp.imagePath}
-            alt=""
-            style={{
-              width: sourceWidth,
-              height: sourceHeight,
-              left: col * gap - gap,
-              top: row * gap - gap,
-            }}
+            href={stamp.imagePath}
+            x={col * gap - gap}
+            y={row * gap - gap}
+            width={sourceWidth}
+            height={sourceHeight}
+            preserveAspectRatio="xMidYMid meet"
           />
         )),
-      )}
-    </div>
   )
 }
 
-function alignmentClass(alignment: TigersLayout['stampAlignments'][number]): string {
-  return alignment === 'bottomRight' ? 'is-bottom-right' : 'is-center'
-}
+function stampRect({
+  stamp,
+  layout,
+  index,
+  designWidth,
+  designHeight,
+}: {
+  stamp: TigersStamp
+  layout: TigersLayout
+  index: number
+  designWidth: number
+  designHeight: number
+}) {
+  const position = layout.stampPositions[index] ?? { top: 0, right: 0, bottom: 0, left: 0 }
+  const slotX = position.left
+  const slotY = position.top
+  const slotWidth = designWidth - position.left - position.right
+  const slotHeight = designHeight - position.top - position.bottom
+  const width = designWidth * (layout.stampSizeScales[index] ?? 0.7)
+  const height = width / stamp.aspectRatio
+  const alignment = layout.stampAlignments[index] ?? 'center'
+  const x = alignment === 'bottomRight' ? slotX + slotWidth - width : slotX + (slotWidth - width) / 2
+  const y = alignment === 'bottomRight' ? slotY + slotHeight - height : slotY + (slotHeight - height) / 2
 
-function backgroundStyle(background: TigersBackground | null): CSSProperties {
-  if (!background?.imagePath) return {}
-  return { backgroundImage: `url(${background.imagePath})` }
+  return {
+    x,
+    y,
+    width,
+    height,
+    angle: layout.stampAngles[index] ?? 0,
+  }
 }
 
 export function TigersDesignPreview({
@@ -65,52 +91,70 @@ export function TigersDesignPreview({
   mode = 'mockup',
 }: TigersDesignPreviewProps) {
   const activeStamps = selectedLayout ? selectedStamps.slice(0, selectedLayout.stampCount) : []
+  const designWidth = selectedItem.printWidth
+  const designHeight = selectedItem.printHeight
+  const viewBox = `0 0 ${designWidth} ${designHeight}`
+  const maskId = 'tigers-pixel9a-mask'
 
   return (
     <div className={`tigers-design-preview tigers-design-preview--${mode}`}>
-      <div className="tigers-design-preview__phone-shell" aria-hidden="true">
-        <div className="tigers-design-preview__camera" />
-        <div className="tigers-design-preview__design-area">
-          <div
-            className="tigers-design-preview__case-color"
-            style={{ backgroundColor: selectedItem.caseColor }}
-          />
-          <div className="tigers-design-preview__background" style={backgroundStyle(selectedBackground)} />
+      <svg
+        className="tigers-design-preview__pixel9a-svg"
+        viewBox={viewBox}
+        role="img"
+        aria-label={`${selectedItem.modelName} ${selectedItem.materialName} プレビュー`}
+      >
+        <defs>
+          <mask id={maskId} maskUnits="userSpaceOnUse">
+            <rect x="0" y="0" width={designWidth} height={designHeight} fill="#000000" />
+            <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#ffffff" fillRule="evenodd" />
+          </mask>
+        </defs>
+        <path
+          className="tigers-design-preview__pixel9a-base"
+          d={PIXEL_9A_CASE_CLIP_PATH_D}
+          fillRule="evenodd"
+        />
+        <g mask={`url(#${maskId})`}>
+          <rect width={designWidth} height={designHeight} fill={selectedItem.caseColor} />
+          {selectedBackground?.imagePath ? (
+            <image
+              href={selectedBackground.imagePath}
+              x="0"
+              y="0"
+              width={designWidth}
+              height={designHeight}
+              preserveAspectRatio="xMidYMid slice"
+            />
+          ) : null}
           {selectedLayout?.id === 'pattern' && activeStamps[0] ? (
-            <PatternStamp stamp={activeStamps[0]} />
+            <PatternStamp stamp={activeStamps[0]} designWidth={designWidth} designHeight={designHeight} />
           ) : (
             activeStamps.map((stamp, index) => {
-              const position = selectedLayout?.stampPositions[index] ?? { top: 0, right: 0, bottom: 0, left: 0 }
-              const width = DESIGN_WIDTH * (selectedLayout?.stampSizeScales[index] ?? 0.7)
-              const angle = selectedLayout?.stampAngles[index] ?? 0
-              const alignment = selectedLayout?.stampAlignments[index] ?? 'center'
+              if (!selectedLayout) return null
+              const rect = stampRect({ stamp, layout: selectedLayout, index, designWidth, designHeight })
 
               return (
-                <div
+                <image
                   key={`${stamp.id}-${index}`}
-                  className={`tigers-design-preview__stamp-slot ${alignmentClass(alignment)}`}
-                  style={{
-                    top: position.top,
-                    right: position.right,
-                    bottom: position.bottom,
-                    left: position.left,
-                  }}
-                >
-                  <img
-                    src={stamp.imagePath}
-                    alt=""
-                    style={{
-                      width,
-                      transform: `rotate(${angle}deg)`,
-                      transformOrigin: 'top left',
-                    }}
-                  />
-                </div>
+                  href={stamp.imagePath}
+                  x={rect.x}
+                  y={rect.y}
+                  width={rect.width}
+                  height={rect.height}
+                  preserveAspectRatio="xMidYMid meet"
+                  transform={`rotate(${rect.angle} ${rect.x} ${rect.y})`}
+                />
               )
             })
           )}
-        </div>
-      </div>
+        </g>
+        <path
+          className="tigers-design-preview__pixel9a-outline"
+          d={PIXEL_9A_CASE_CLIP_PATH_D}
+          fillRule="evenodd"
+        />
+      </svg>
     </div>
   )
 }
