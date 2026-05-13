@@ -176,7 +176,6 @@ function isLegacyPixel9aVariant(variant: string | null): boolean {
 
 export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) {
   const clipId = useId().replace(/:/g, '')
-  const bodyShadowId = `${clipId}-body-shadow`
   const innerBevelId = `${clipId}-inner-bevel`
   const edgeGradientId = `${clipId}-edge-gradient`
   const glassGradientId = `${clipId}-glass-gradient`
@@ -588,39 +587,15 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
                 <stop offset="100%" stopColor="#ffffff" stopOpacity="0.20" />
               </linearGradient>
               <filter
-                id={bodyShadowId}
-                x="-50%"
-                y="-50%"
-                width="200%"
-                height="200%"
+                id={innerBevelId}
+                x={-canvasSize.width * 0.12}
+                y={-canvasSize.height * 0.08}
+                width={canvasSize.width * 1.24}
+                height={canvasSize.height * 1.16}
                 filterUnits="userSpaceOnUse"
                 primitiveUnits="userSpaceOnUse"
                 colorInterpolationFilters="sRGB"
               >
-                <feGaussianBlur in="SourceAlpha" stdDeviation="12" result="bodyShadowBlur1" />
-                <feOffset in="bodyShadowBlur1" dx="-2" dy="-2" result="bodyShadowOffset1" />
-                <feFlood floodColor="#000000" floodOpacity="0.06" result="bodyShadowColor1" />
-                <feComposite in="bodyShadowColor1" in2="bodyShadowOffset1" operator="in" result="bodyShadow1" />
-                <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="bodyShadowBlur2" />
-                <feOffset in="bodyShadowBlur2" dx="3" dy="6" result="bodyShadowOffset2" />
-                <feFlood floodColor="#000000" floodOpacity="0.18" result="bodyShadowColor2" />
-                <feComposite in="bodyShadowColor2" in2="bodyShadowOffset2" operator="in" result="bodyShadow2" />
-                <feGaussianBlur in="SourceAlpha" stdDeviation="10" result="bodyShadowBlur3" />
-                <feOffset in="bodyShadowBlur3" dx="0" dy="8" result="bodyShadowOffset3" />
-                <feFlood floodColor="#000000" floodOpacity="0.10" result="bodyShadowColor3" />
-                <feComposite in="bodyShadowColor3" in2="bodyShadowOffset3" operator="in" result="bodyShadow3" />
-                <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="bodyShadowBlur4" />
-                <feOffset in="bodyShadowBlur4" dx="2" dy="3" result="bodyShadowOffset4" />
-                <feFlood floodColor="#000000" floodOpacity="0.15" result="bodyShadowColor4" />
-                <feComposite in="bodyShadowColor4" in2="bodyShadowOffset4" operator="in" result="bodyShadow4" />
-                <feMerge>
-                  <feMergeNode in="bodyShadow1" />
-                  <feMergeNode in="bodyShadow2" />
-                  <feMergeNode in="bodyShadow3" />
-                  <feMergeNode in="bodyShadow4" />
-                </feMerge>
-              </filter>
-              <filter id={innerBevelId} x="-12%" y="-8%" width="124%" height="116%" colorInterpolationFilters="sRGB">
                 <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="blur" />
                 <feOffset in="blur" dx="0.8" dy="1.2" result="darkEdge" />
                 <feComposite in="darkEdge" in2="SourceAlpha" operator="out" result="darkRim" />
@@ -642,7 +617,6 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
             {/* Flutter版のSvgCaseShadowPainter相当の多層影 */}
             <g
               className="editor-shape-shadow"
-              filter={`url(#${bodyShadowId})`}
               dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
             />
             {/* ケース本体の厚み・側面ハイライト */}

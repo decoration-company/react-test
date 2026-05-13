@@ -132,6 +132,11 @@
   overflow: visible;
   border-radius: 12px;
   background: transparent;
+  filter:
+    drop-shadow(-2px -2px 12px rgb(0 0 0 / 6%))
+    drop-shadow(3px 6px 8px rgb(0 0 0 / 18%))
+    drop-shadow(0 8px 10px rgb(0 0 0 / 10%))
+    drop-shadow(2px 3px 3px rgb(0 0 0 / 15%));
   touch-action: none;
   user-select: none;
 }
