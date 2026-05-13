@@ -16,13 +16,49 @@ import {
   svgPathToShape,
   type SvgShapeResult,
 } from '../verify/parseSvgPath'
-import { uploadImage, renderProductVariant, type RenderDesignResponse } from '../api/commerce'
+import { uploadImage, renderDesign, renderProductVariant, type RenderDesignResponse } from '../api/commerce'
+import {
+  PIXEL_9A_CASE_CLIP_PATH_BOUNDS,
+  PIXEL_9A_CASE_CLIP_PATH_D,
+} from './constants'
+import { createRenderPayload } from './transform'
 import './Pixel9aCaseMaskPreview.css'
 
 const MAX_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const IMAGE_MIN_SCALE = 0.1
 const IMAGE_MAX_SCALE = 4
+
+const LEGACY_PIXEL_9A_VARIANTS = new Set(['pixel-9a', 'pixel9a', 'pixel-9a-hardcase'])
+
+const PIXEL_9A_FALLBACK_SPEC: PrintSpec = {
+  variant: 'pixel-9a',
+  device: {
+    code: 'pixel-9a',
+    name: 'Google Pixel 9a',
+  },
+  product_type: {
+    code: 'hard-case',
+    name: 'ハードケース',
+  },
+  print_spec: {
+    print_width: Math.round(PIXEL_9A_CASE_CLIP_PATH_BOUNDS.width),
+    print_height: Math.round(PIXEL_9A_CASE_CLIP_PATH_BOUNDS.height),
+    print_area_svg_url: '',
+    base_image_url: null,
+    safe_area_svg_url: null,
+    bleed_area_svg_url: null,
+  },
+}
+
+const PIXEL_9A_FALLBACK_SHAPE = svgPathToShape({
+  d: PIXEL_9A_CASE_CLIP_PATH_D,
+  fillRule: 'evenodd',
+  viewBox: {
+    width: PIXEL_9A_CASE_CLIP_PATH_BOUNDS.width,
+    height: PIXEL_9A_CASE_CLIP_PATH_BOUNDS.height,
+  },
+})
 
 type ImageTransform = {
   centerX: number
@@ -40,6 +76,8 @@ type GestureState =
 type ShopifyDesignReadyMessage = {
   type: 'decocom:design:ready'
   variant: string
+  spec_id: string
+  design_id: string
   preview_url: string
   print_image_url: string
 }
@@ -132,8 +170,16 @@ function createCoverTransform(
   }
 }
 
+function isLegacyPixel9aVariant(variant: string | null): boolean {
+  return LEGACY_PIXEL_9A_VARIANTS.has((variant ?? '').toLowerCase())
+}
+
 export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) {
   const clipId = useId().replace(/:/g, '')
+  const bodyShadowId = `${clipId}-body-shadow`
+  const innerBevelId = `${clipId}-inner-bevel`
+  const edgeGradientId = `${clipId}-edge-gradient`
+  const glassGradientId = `${clipId}-glass-gradient`
   const svgRef = useRef<SVGSVGElement | null>(null)
   const pointersRef = useRef(new Map<number, DOMPoint>())
   const gestureRef = useRef<GestureState | null>(null)
@@ -172,6 +218,14 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
       setPrintAreaShape(null)
 
       try {
+        if (isLegacyPixel9aVariant(variant)) {
+          if (!cancelled) {
+            setSpec(PIXEL_9A_FALLBACK_SPEC)
+            setPrintAreaShape(PIXEL_9A_FALLBACK_SHAPE)
+          }
+          return
+        }
+
         const data = await fetchPrintSpec(variant!)
         if (cancelled) return
         setSpec(data)
@@ -255,22 +309,32 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
 
     try {
       const uploaded = await uploadImage(selectedFile)
-      const result = await renderProductVariant(variant, {
-        source_image_url: uploaded.source_image_url,
-        placement: {
-          centerX: transform.centerX,
-          centerY: transform.centerY,
-          imageWidth: transform.imageWidth,
-          imageHeight: transform.imageHeight,
-          scale: transform.scale,
-          rotationRad: transform.rotationRad,
-        },
-      })
+      const result = isLegacyPixel9aVariant(variant)
+        ? await renderDesign(createRenderPayload({
+          id: 'pixel-9a-editor-image',
+          sourceImageUrl: uploaded.source_image_url,
+          naturalWidth: transform.imageWidth,
+          naturalHeight: transform.imageHeight,
+          transform,
+        }))
+        : await renderProductVariant(variant, {
+          source_image_url: uploaded.source_image_url,
+          placement: {
+            centerX: transform.centerX,
+            centerY: transform.centerY,
+            imageWidth: transform.imageWidth,
+            imageHeight: transform.imageHeight,
+            scale: transform.scale,
+            rotationRad: transform.rotationRad,
+          },
+        })
 
       if (isShopifyEmbed) {
         const message: ShopifyDesignReadyMessage = {
           type: 'decocom:design:ready',
           variant,
+          spec_id: result.design_id,
+          design_id: result.design_id,
           preview_url: result.preview_image_url,
           print_image_url: result.composed_image_url,
         }
@@ -291,6 +355,8 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
     const message: ShopifyDesignReadyMessage = {
       type: 'decocom:design:ready',
       variant,
+      spec_id: saveResult.design_id,
+      design_id: saveResult.design_id,
       preview_url: saveResult.preview_image_url,
       print_image_url: saveResult.composed_image_url,
     }
@@ -499,14 +565,91 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
             onWheel={onWheel}
           >
             <style>{`
-              .editor-shape-bg * { fill: #fff; stroke: #d1d5db; stroke-width: 0.5; vector-effect: non-scaling-stroke; }
-              .editor-shape-outline * { fill: none; stroke: #cbd5e1; stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+              .editor-shape-shadow, .editor-shape-material, .editor-shape-bevel, .editor-shape-glass, .editor-shape-outline { pointer-events: none; }
+              .editor-shape-shadow * { fill: #ffffff; stroke: transparent; stroke-width: 0; }
+              .editor-shape-material * { fill: url(#${edgeGradientId}); stroke: rgba(255, 255, 255, 0.78); stroke-width: 0.9; vector-effect: non-scaling-stroke; }
+              .editor-shape-bg * { fill: rgba(255, 255, 255, 0.92); stroke: transparent; stroke-width: 0; vector-effect: non-scaling-stroke; }
+              .editor-shape-bevel * { fill: none; stroke: rgba(255, 255, 255, 0.01); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
+              .editor-shape-glass * { fill: url(#${glassGradientId}); stroke: transparent; stroke-width: 0; mix-blend-mode: screen; }
+              .editor-shape-outline * { fill: none; stroke: rgba(17, 24, 39, 0.42); stroke-width: 0.9; vector-effect: non-scaling-stroke; }
             `}</style>
             <defs>
+              <linearGradient id={edgeGradientId} x1="0" y1="0" x2={canvasSize.width} y2={canvasSize.height} gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.98" />
+                <stop offset="42%" stopColor="#f8fafc" stopOpacity="0.9" />
+                <stop offset="72%" stopColor="#e5e7eb" stopOpacity="0.72" />
+                <stop offset="100%" stopColor="#111827" stopOpacity="0.16" />
+              </linearGradient>
+              <linearGradient id={glassGradientId} x1={canvasSize.width * 0.12} y1={canvasSize.height * 0.02} x2={canvasSize.width * 0.88} y2={canvasSize.height * 0.98} gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.48" />
+                <stop offset="26%" stopColor="#ffffff" stopOpacity="0.08" />
+                <stop offset="43%" stopColor="#ffffff" stopOpacity="0.32" />
+                <stop offset="62%" stopColor="#ffffff" stopOpacity="0.05" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="0.20" />
+              </linearGradient>
+              <filter
+                id={bodyShadowId}
+                x="-50%"
+                y="-50%"
+                width="200%"
+                height="200%"
+                filterUnits="userSpaceOnUse"
+                primitiveUnits="userSpaceOnUse"
+                colorInterpolationFilters="sRGB"
+              >
+                <feGaussianBlur in="SourceAlpha" stdDeviation="12" result="bodyShadowBlur1" />
+                <feOffset in="bodyShadowBlur1" dx="-2" dy="-2" result="bodyShadowOffset1" />
+                <feFlood floodColor="#000000" floodOpacity="0.06" result="bodyShadowColor1" />
+                <feComposite in="bodyShadowColor1" in2="bodyShadowOffset1" operator="in" result="bodyShadow1" />
+                <feGaussianBlur in="SourceAlpha" stdDeviation="8" result="bodyShadowBlur2" />
+                <feOffset in="bodyShadowBlur2" dx="3" dy="6" result="bodyShadowOffset2" />
+                <feFlood floodColor="#000000" floodOpacity="0.18" result="bodyShadowColor2" />
+                <feComposite in="bodyShadowColor2" in2="bodyShadowOffset2" operator="in" result="bodyShadow2" />
+                <feGaussianBlur in="SourceAlpha" stdDeviation="10" result="bodyShadowBlur3" />
+                <feOffset in="bodyShadowBlur3" dx="0" dy="8" result="bodyShadowOffset3" />
+                <feFlood floodColor="#000000" floodOpacity="0.10" result="bodyShadowColor3" />
+                <feComposite in="bodyShadowColor3" in2="bodyShadowOffset3" operator="in" result="bodyShadow3" />
+                <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="bodyShadowBlur4" />
+                <feOffset in="bodyShadowBlur4" dx="2" dy="3" result="bodyShadowOffset4" />
+                <feFlood floodColor="#000000" floodOpacity="0.15" result="bodyShadowColor4" />
+                <feComposite in="bodyShadowColor4" in2="bodyShadowOffset4" operator="in" result="bodyShadow4" />
+                <feMerge>
+                  <feMergeNode in="bodyShadow1" />
+                  <feMergeNode in="bodyShadow2" />
+                  <feMergeNode in="bodyShadow3" />
+                  <feMergeNode in="bodyShadow4" />
+                </feMerge>
+              </filter>
+              <filter id={innerBevelId} x="-12%" y="-8%" width="124%" height="116%" colorInterpolationFilters="sRGB">
+                <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="blur" />
+                <feOffset in="blur" dx="0.8" dy="1.2" result="darkEdge" />
+                <feComposite in="darkEdge" in2="SourceAlpha" operator="out" result="darkRim" />
+                <feFlood floodColor="#000000" floodOpacity="0.18" result="darkColor" />
+                <feComposite in="darkColor" in2="darkRim" operator="in" result="dark" />
+                <feOffset in="blur" dx="-0.8" dy="-1.1" result="lightEdge" />
+                <feComposite in="lightEdge" in2="SourceAlpha" operator="out" result="lightRim" />
+                <feFlood floodColor="#ffffff" floodOpacity="0.58" result="lightColor" />
+                <feComposite in="lightColor" in2="lightRim" operator="in" result="light" />
+                <feMerge>
+                  <feMergeNode in="dark" />
+                  <feMergeNode in="light" />
+                </feMerge>
+              </filter>
               <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
                 <g dangerouslySetInnerHTML={{ __html: printAreaShape.clipMarkup }} />
               </clipPath>
             </defs>
+            {/* Flutter版のSvgCaseShadowPainter相当の多層影 */}
+            <g
+              className="editor-shape-shadow"
+              filter={`url(#${bodyShadowId})`}
+              dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
+            />
+            {/* ケース本体の厚み・側面ハイライト */}
+            <g
+              className="editor-shape-material"
+              dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
+            />
             {/* ケース形状の白背景 */}
             <g
               className="editor-shape-bg"
@@ -527,6 +670,18 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
                 </g>
               </g>
             ) : null}
+            {/* クリップ境界の内側ベベル */}
+            <g
+              className="editor-shape-bevel"
+              filter={`url(#${innerBevelId})`}
+              dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
+            />
+            {/* 画面ガラス風の斜め反射 */}
+            <g
+              className="editor-shape-glass"
+              clipPath={`url(#${clipId})`}
+              dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
+            />
             {/* ケース形状のアウトライン（最前面） */}
             <g
               className="editor-shape-outline"

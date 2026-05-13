@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { uploadImage, saveDesign } from '../api/commerce'
+import { svgElementToPngFile } from '../api/svgExport'
 import {
   mockTigersItem,
   tigersLayouts,
@@ -10,6 +12,22 @@ import { serializeTigersDesign } from './tigersDesignSerialization'
 import { TigersDesignPreview } from './TigersDesignPreview'
 import type { TigersBackground, TigersLayout, TigersMockItem, TigersStamp, TigersStep } from './tigersTypes'
 import './TigersEditor.css'
+
+function embeddedParentOrigin(): string {
+  const params = new URLSearchParams(window.location.search)
+  const origin = params.get('origin') ?? params.get('parent_origin') ?? '*'
+  if (origin === '*') return origin
+  try {
+    return new URL(origin).origin
+  } catch {
+    return '*'
+  }
+}
+
+function isShopifyEmbed(): boolean {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('embed') === 'shopify' || params.get('platform') === 'shopify'
+}
 
 function stepNumber(step: TigersStep): number {
   if (step === 'stamp') return 1
@@ -272,22 +290,57 @@ function PreviewScreen({
   selectedBackground: TigersBackground
   onBack: () => void
 }) {
+  const svgRef = useRef<SVGSVGElement | null>(null)
   const [postToGallery, setPostToGallery] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const parentOrigin = useMemo(() => embeddedParentOrigin(), [])
+  const shopifyEmbed = useMemo(() => isShopifyEmbed(), [])
 
-  function save() {
-    const specId = `spec_dev_${Date.now()}`
-    const design = serializeTigersDesign({
-      layout: selectedLayout,
-      stamps: selectedStamps,
-      background: selectedBackground,
-    })
+  async function save() {
+    const svg = svgRef.current
+    if (!svg) return
 
-    console.log('[tigers-editor] saved mock design', {
-      spec_id: specId,
-      variant: item.variant,
-      post_to_gallery: postToGallery,
-      design_data: design,
-    })
+    setIsSaving(true)
+    setSaveError(null)
+
+    try {
+      const file = await svgElementToPngFile(svg, 'tigers-design.png')
+      const uploaded = await uploadImage(file)
+
+      const designData = serializeTigersDesign({
+        layout: selectedLayout,
+        stamps: selectedStamps,
+        background: selectedBackground,
+      })
+
+      const result = await saveDesign({
+        variant: item.variant,
+        composed_image_url: uploaded.source_image_url,
+        design_data: {
+          ...designData,
+          post_to_gallery: postToGallery,
+        },
+      })
+
+      const message = {
+        type: 'decocom:design:ready' as const,
+        variant: item.variant,
+        spec_id: result.design_id,
+        design_id: result.design_id,
+        preview_url: result.preview_image_url,
+        print_image_url: result.composed_image_url,
+      }
+      window.parent.postMessage(message, parentOrigin)
+
+      if (!shopifyEmbed) {
+        console.log('[tigers-editor] design saved', message)
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : '保存に失敗しました。もう一度お試しください。')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -300,6 +353,7 @@ function PreviewScreen({
       <div className="tigers-preview-page__body">
         <div className="tigers-preview-page__mockup">
           <TigersDesignPreview
+            ref={svgRef}
             selectedStamps={selectedStamps}
             selectedLayout={selectedLayout}
             selectedBackground={selectedBackground}
@@ -313,10 +367,17 @@ function PreviewScreen({
           <p>カラー: {item.colorName}</p>
           <p>価格: ¥{currency(item.price)}</p>
         </div>
-        <div className="tigers-preview-note">
-          <span aria-hidden="true">i</span>
-          <p>このデザインはカートに入れる際に自動でマイデザインへ保存されます。</p>
-        </div>
+        {saveError ? (
+          <div className="tigers-preview-note">
+            <span aria-hidden="true">!</span>
+            <p>{saveError}</p>
+          </div>
+        ) : (
+          <div className="tigers-preview-note">
+            <span aria-hidden="true">i</span>
+            <p>このデザインはカートに入れる際に自動でマイデザインへ保存されます。</p>
+          </div>
+        )}
       </div>
       <footer className="tigers-preview-page__footer">
         <label className="tigers-gallery-check">
@@ -327,8 +388,8 @@ function PreviewScreen({
           />
           <span>ギャラリーへ投稿する</span>
         </label>
-        <button type="button" className="tigers-primary-button" onClick={save}>
-          カートに入れる
+        <button type="button" className="tigers-primary-button" onClick={save} disabled={isSaving}>
+          {isSaving ? '保存中...' : 'カートに入れる'}
         </button>
       </footer>
     </section>
