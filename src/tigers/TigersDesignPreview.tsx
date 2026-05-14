@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import { PIXEL_9A_CASE_CLIP_PATH_D } from '../pixel9a/constants'
 import type { TigersBackground, TigersLayout, TigersMockItem, TigersStamp } from './tigersTypes'
 
@@ -83,13 +84,13 @@ function stampRect({
   }
 }
 
-export function TigersDesignPreview({
+export const TigersDesignPreview = forwardRef<SVGSVGElement, TigersDesignPreviewProps>(function TigersDesignPreview({
   selectedStamps,
   selectedLayout,
   selectedBackground,
   selectedItem,
   mode = 'mockup',
-}: TigersDesignPreviewProps) {
+}, ref) {
   const activeStamps = selectedLayout ? selectedStamps.slice(0, selectedLayout.stampCount) : []
   const designWidth = selectedItem.printWidth
   const designHeight = selectedItem.printHeight
@@ -99,6 +100,7 @@ export function TigersDesignPreview({
   return (
     <div className={`tigers-design-preview tigers-design-preview--${mode}`}>
       <svg
+        ref={ref}
         className="tigers-design-preview__pixel9a-svg"
         viewBox={viewBox}
         role="img"
@@ -157,4 +159,4 @@ export function TigersDesignPreview({
       </svg>
     </div>
   )
-}
+})

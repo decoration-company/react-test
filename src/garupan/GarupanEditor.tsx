@@ -1,9 +1,27 @@
 import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { uploadImage, saveDesign } from '../api/commerce'
+import { svgElementToPngFile } from '../api/svgExport'
 import { PIXEL_9A_CASE_CLIP_PATH_D } from '../pixel9a/constants'
 import { garupanBackgrounds, garupanStampResources, mockGarupanItem } from './garupanData'
 import { serializeGarupanDesign } from './garupanDesignSerialization'
 import type { GarupanBackground, GarupanMockItem, GarupanPlacedStamp, GarupanStampResource } from './garupanTypes'
 import './GarupanEditor.css'
+
+function embeddedParentOrigin(): string {
+  const params = new URLSearchParams(window.location.search)
+  const origin = params.get('origin') ?? params.get('parent_origin') ?? '*'
+  if (origin === '*') return origin
+  try {
+    return new URL(origin).origin
+  } catch {
+    return '*'
+  }
+}
+
+function isShopifyEmbed(): boolean {
+  const params = new URLSearchParams(window.location.search)
+  return params.get('embed') === 'shopify' || params.get('platform') === 'shopify'
+}
 
 type SheetMode = 'gallery' | 'background' | 'garupan' | 'stamp' | null
 
@@ -14,6 +32,28 @@ type DragState = {
   startX: number
   startY: number
 }
+
+type ScaleState = {
+  id: string
+  pointerId: number
+}
+
+type RotateState = {
+  id: string
+  pointerId: number
+}
+
+type GestureState =
+  | ({ kind: 'move' } & DragState)
+  | ({ kind: 'scale' } & ScaleState)
+  | ({ kind: 'rotate' } & RotateState)
+
+const SELECTED_BORDER_COLOR = '#12CDD7'
+const SELECTED_BORDER_WIDTH = 3
+const HANDLE_SIZE = 20
+const HANDLE_ICON_SIZE = 14
+const STAMP_MIN_SIZE = 28
+const STAMP_MAX_SIZE = 112
 
 function currency(value: number): string {
   return new Intl.NumberFormat('ja-JP').format(value)
@@ -81,6 +121,9 @@ function GarupanCanvas({
   selectedStampId,
   onSelectStamp,
   onMoveStamp,
+  onScaleStamp,
+  onRotateStamp,
+  onDeleteStamp,
 }: {
   item: GarupanMockItem
   background: GarupanBackground
@@ -88,9 +131,12 @@ function GarupanCanvas({
   selectedStampId: string | null
   onSelectStamp: (id: string | null) => void
   onMoveStamp: (id: string, x: number, y: number) => void
+  onScaleStamp: (id: string, size: number) => void
+  onRotateStamp: (id: string, rotation: number) => void
+  onDeleteStamp: (id: string) => void
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const dragRef = useRef<DragState | null>(null)
+  const gestureRef = useRef<GestureState | null>(null)
   const viewBox = `0 0 ${item.printWidth} ${item.printHeight}`
 
   function startDrag(event: PointerEvent<SVGGElement>, stamp: GarupanPlacedStamp) {
@@ -99,7 +145,8 @@ function GarupanCanvas({
     event.currentTarget.setPointerCapture(event.pointerId)
     event.stopPropagation()
     onSelectStamp(stamp.id)
-    dragRef.current = {
+    gestureRef.current = {
+      kind: 'move',
       id: stamp.id,
       pointerId: event.pointerId,
       startPoint: clientToSvg(svg, event.clientX, event.clientY),
@@ -108,21 +155,68 @@ function GarupanCanvas({
     }
   }
 
-  function moveDrag(event: PointerEvent<SVGSVGElement>) {
+  function startScale(event: PointerEvent<SVGGElement>, stamp: GarupanPlacedStamp) {
     const svg = svgRef.current
-    const drag = dragRef.current
-    if (!svg || !drag || drag.pointerId !== event.pointerId) return
-    const current = clientToSvg(svg, event.clientX, event.clientY)
-    onMoveStamp(
-      drag.id,
-      clamp(drag.startX + current.x - drag.startPoint.x, 0, item.printWidth),
-      clamp(drag.startY + current.y - drag.startPoint.y, 0, item.printHeight),
-    )
+    if (!svg) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.stopPropagation()
+    onSelectStamp(stamp.id)
+    gestureRef.current = {
+      kind: 'scale',
+      id: stamp.id,
+      pointerId: event.pointerId,
+    }
   }
 
-  function endDrag(event: PointerEvent<SVGSVGElement>) {
-    if (dragRef.current?.pointerId === event.pointerId) {
-      dragRef.current = null
+  function startRotate(event: PointerEvent<SVGGElement>, stamp: GarupanPlacedStamp) {
+    const svg = svgRef.current
+    if (!svg) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.stopPropagation()
+    onSelectStamp(stamp.id)
+    gestureRef.current = {
+      kind: 'rotate',
+      id: stamp.id,
+      pointerId: event.pointerId,
+    }
+  }
+
+  function moveGesture(event: PointerEvent<SVGSVGElement>) {
+    const svg = svgRef.current
+    const gesture = gestureRef.current
+    if (!svg || !gesture || gesture.pointerId !== event.pointerId) return
+    const current = clientToSvg(svg, event.clientX, event.clientY)
+    const stamp = stamps.find(candidate => candidate.id === gesture.id)
+    if (!stamp) return
+
+    if (gesture.kind === 'move') {
+      onMoveStamp(
+        gesture.id,
+        clamp(gesture.startX + current.x - gesture.startPoint.x, 0, item.printWidth),
+        clamp(gesture.startY + current.y - gesture.startPoint.y, 0, item.printHeight),
+      )
+      return
+    }
+
+    if (gesture.kind === 'scale') {
+      const topLeft = rotatePoint(
+        { x: stamp.x, y: stamp.y },
+        { x: stamp.x - stamp.size / 2, y: stamp.y - stamp.size / 2 },
+        stamp.rotation,
+      )
+      const distance = Math.hypot(current.x - topLeft.x, current.y - topLeft.y)
+      onScaleStamp(gesture.id, clamp(distance / Math.SQRT2, STAMP_MIN_SIZE, STAMP_MAX_SIZE))
+      return
+    }
+
+    const baseAngle = Math.atan2(-stamp.size / 2, stamp.size / 2)
+    const currentAngle = Math.atan2(current.y - stamp.y, current.x - stamp.x)
+    onRotateStamp(gesture.id, normalizeDegrees(((currentAngle - baseAngle) * 180) / Math.PI))
+  }
+
+  function endGesture(event: PointerEvent<SVGSVGElement>) {
+    if (gestureRef.current?.pointerId === event.pointerId) {
+      gestureRef.current = null
     }
   }
 
@@ -135,9 +229,9 @@ function GarupanCanvas({
         role="img"
         aria-label={`${item.modelName} ガルパン自由レイアウト`}
         onPointerDown={() => onSelectStamp(null)}
-        onPointerMove={moveDrag}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        onPointerMove={moveGesture}
+        onPointerUp={endGesture}
+        onPointerCancel={endGesture}
       >
         <defs>
           <clipPath id="garupan-pixel9a-clip" clipPathUnits="userSpaceOnUse">
@@ -151,6 +245,8 @@ function GarupanCanvas({
           <circle cx="168" cy="338" r="118" fill="#ffffff" opacity="0.18" />
           {stamps.map(stamp => {
             const selected = stamp.id === selectedStampId
+            const half = stamp.size / 2
+            const handleOffset = HANDLE_SIZE / 2
             return (
               <g
                 key={stamp.id}
@@ -159,13 +255,45 @@ function GarupanCanvas({
                 onPointerDown={event => startDrag(event, stamp)}
               >
                 {selected ? (
-                  <rect
-                    x={-stamp.size / 2 - 6}
-                    y={-stamp.size / 2 - 6}
-                    width={stamp.size + 12}
-                    height={stamp.size + 12}
-                    rx="10"
-                  />
+                  <g className="garupan-selection-box" aria-hidden="true">
+                    <rect
+                      x={-half}
+                      y={-half}
+                      width={stamp.size}
+                      height={stamp.size}
+                      fill="none"
+                      stroke={SELECTED_BORDER_COLOR}
+                      strokeWidth={SELECTED_BORDER_WIDTH}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    <g
+                      className="garupan-edit-handle"
+                      transform={`translate(${-half - handleOffset} ${-half - handleOffset})`}
+                      onPointerDown={event => {
+                        event.stopPropagation()
+                        onDeleteStamp(stamp.id)
+                      }}
+                    >
+                      <circle r={HANDLE_SIZE / 2} />
+                      <text dominantBaseline="central" textAnchor="middle" fontSize={HANDLE_ICON_SIZE}>×</text>
+                    </g>
+                    <g
+                      className="garupan-edit-handle is-rotate"
+                      transform={`translate(${half + handleOffset} ${-half - handleOffset})`}
+                      onPointerDown={event => startRotate(event, stamp)}
+                    >
+                      <circle r={HANDLE_SIZE / 2} />
+                      <text dominantBaseline="central" textAnchor="middle" fontSize={HANDLE_ICON_SIZE}>↻</text>
+                    </g>
+                    <g
+                      className="garupan-edit-handle is-scale"
+                      transform={`translate(${half + handleOffset} ${half + handleOffset})`}
+                      onPointerDown={event => startScale(event, stamp)}
+                    >
+                      <circle r={HANDLE_SIZE / 2} />
+                      <text dominantBaseline="central" textAnchor="middle" fontSize={HANDLE_ICON_SIZE}>↘</text>
+                    </g>
+                  </g>
                 ) : null}
                 <text
                   dominantBaseline="central"
@@ -183,6 +311,27 @@ function GarupanCanvas({
       </svg>
     </div>
   )
+}
+
+function rotatePoint(
+  center: { x: number; y: number },
+  point: { x: number; y: number },
+  degrees: number,
+): { x: number; y: number } {
+  const rad = (degrees * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const dx = point.x - center.x
+  const dy = point.y - center.y
+  return {
+    x: center.x + dx * cos - dy * sin,
+    y: center.y + dx * sin + dy * cos,
+  }
+}
+
+function normalizeDegrees(degrees: number): number {
+  const normalized = ((degrees + 180) % 360 + 360) % 360 - 180
+  return Math.round(normalized * 10) / 10
 }
 
 function ToolPanel({
@@ -364,23 +513,51 @@ function PreviewScreen({
   stamps: GarupanPlacedStamp[]
   onBack: () => void
 }) {
-  function save() {
-    const specId = `spec_dev_${Date.now()}`
-    const designData = serializeGarupanDesign({ background, stamps })
-    window.parent?.postMessage({
-      type: 'decocom:design:ready',
-      variant: item.variant,
-      spec_id: specId,
-      design_data: designData,
-      preview_url: null,
-      print_image_url: null,
-    }, '*')
-    console.log('[garupan-editor] saved mock design', {
-      spec_id: specId,
-      variant: item.variant,
-      design_data: designData,
-    })
+  const previewSvgRef = useRef<SVGSVGElement | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const parentOrigin = useMemo(() => embeddedParentOrigin(), [])
+  const shopifyEmbedded = useMemo(() => isShopifyEmbed(), [])
+
+  async function save() {
+    const svg = previewSvgRef.current
+    if (!svg) return
+
+    setIsSaving(true)
+    setSaveError(null)
+
+    try {
+      const file = await svgElementToPngFile(svg, 'garupan-design.png')
+      const uploaded = await uploadImage(file)
+
+      const designData = serializeGarupanDesign({ background, stamps })
+
+      const result = await saveDesign({
+        variant: item.variant,
+        composed_image_url: uploaded.source_image_url,
+        design_data: designData,
+      })
+
+      const message = {
+        type: 'decocom:design:ready' as const,
+        variant: item.variant,
+        design_id: result.design_id,
+        preview_url: result.preview_image_url,
+        print_image_url: result.composed_image_url,
+      }
+      window.parent.postMessage(message, parentOrigin)
+
+      if (!shopifyEmbedded) {
+        console.log('[garupan-editor] design saved', message)
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : '保存に失敗しました。もう一度お試しください。')
+    } finally {
+      setIsSaving(false)
+    }
   }
+
+  const viewBox = `0 0 ${item.printWidth} ${item.printHeight}`
 
   return (
     <section className="garupan-preview-page">
@@ -393,14 +570,40 @@ function PreviewScreen({
         <span />
       </header>
       <div className="garupan-preview-page__body">
-        <GarupanCanvas
-          item={item}
-          background={background}
-          stamps={stamps}
-          selectedStampId={null}
-          onSelectStamp={() => {}}
-          onMoveStamp={() => {}}
-        />
+        <div className="garupan-canvas-wrap">
+          <svg
+            ref={previewSvgRef}
+            className="garupan-canvas"
+            viewBox={viewBox}
+            role="img"
+            aria-label={`${item.modelName} ガルパン自由レイアウト プレビュー`}
+          >
+            <defs>
+              <clipPath id="garupan-pixel9a-clip-preview" clipPathUnits="userSpaceOnUse">
+                <path d={PIXEL_9A_CASE_CLIP_PATH_D} clipRule="evenodd" />
+              </clipPath>
+            </defs>
+            <path className="garupan-canvas__base" d={PIXEL_9A_CASE_CLIP_PATH_D} fillRule="evenodd" />
+            <g clipPath="url(#garupan-pixel9a-clip-preview)">
+              <rect width={item.printWidth} height={item.printHeight} fill={background.color} />
+              <circle cx="42" cy="128" r="96" fill="#ffffff" opacity="0.28" />
+              <circle cx="168" cy="338" r="118" fill="#ffffff" opacity="0.18" />
+              {stamps.map(stamp => (
+                <text
+                  key={stamp.id}
+                  dominantBaseline="central"
+                  textAnchor="middle"
+                  fontSize={stamp.size}
+                  transform={`translate(${stamp.x} ${stamp.y}) rotate(${stamp.rotation})`}
+                  aria-label={stamp.label}
+                >
+                  {stamp.emoji}
+                </text>
+              ))}
+            </g>
+            <path className="garupan-canvas__outline" d={PIXEL_9A_CASE_CLIP_PATH_D} fillRule="evenodd" />
+          </svg>
+        </div>
         <div className="garupan-preview-card">
           <h2>ガルパンコラボ</h2>
           <p>機種: {item.modelName}</p>
@@ -409,10 +612,13 @@ function PreviewScreen({
           <p>価格: ¥{currency(item.price)}</p>
           <p>スタンプ数: {stamps.length}</p>
         </div>
+        {saveError ? (
+          <p className="garupan-preview-error">{saveError}</p>
+        ) : null}
       </div>
       <footer className="garupan-preview-page__footer">
-        <button type="button" className="garupan-primary-button" onClick={save}>
-          カートに入れる
+        <button type="button" className="garupan-primary-button" onClick={save} disabled={isSaving}>
+          {isSaving ? '保存中...' : 'カートに入れる'}
         </button>
       </footer>
     </section>
@@ -491,6 +697,12 @@ export function GarupanEditor({ variant }: { variant: string | null }) {
             selectedStampId={selectedStampId}
             onSelectStamp={setSelectedStampId}
             onMoveStamp={(id, x, y) => updateStamp(id, { x, y })}
+            onScaleStamp={(id, size) => updateStamp(id, { size })}
+            onRotateStamp={(id, rotation) => updateStamp(id, { rotation })}
+            onDeleteStamp={id => {
+              setStamps(prev => prev.filter(stamp => stamp.id !== id))
+              setSelectedStampId(current => (current === id ? null : current))
+            }}
           />
         </div>
         <ToolPanel

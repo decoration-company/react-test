@@ -3,6 +3,7 @@ import { GarupanEditor } from './garupan/GarupanEditor'
 import { RenderTestPage } from './test/RenderTestPage'
 import { TigersEditor } from './tigers/TigersEditor'
 import { VerifyPreview } from './verify/VerifyPreview'
+import { KisekaePreview } from './kisekae/KisekaePreview'
 import './App.css'
 
 function App() {
@@ -19,6 +20,14 @@ function App() {
     return (
       <main>
         <VerifyPreview variant={variant} />
+      </main>
+    )
+  }
+
+  if (path === '/kisekae') {
+    return (
+      <main>
+        <KisekaePreview variant={variant ?? 'iphone-16-pro-kisekae'} />
       </main>
     )
   }

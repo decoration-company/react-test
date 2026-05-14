@@ -12,6 +12,12 @@ export type RenderDesignResponse = {
   height_px?: number
 }
 
+export type SaveDesignResponse = {
+  design_id: string
+  composed_image_url: string
+  preview_image_url: string
+}
+
 export type ProductRenderPlacement = {
   centerX: number
   centerY: number
@@ -83,4 +89,20 @@ export async function renderProductVariant(
   }
 
   return parseJsonResponse<RenderDesignResponse>(response)
+}
+
+export async function saveDesign(payload: {
+  variant: string
+  composed_image_url: string
+  design_data: unknown
+}): Promise<SaveDesignResponse> {
+  const response = await fetch(`${commerceBaseUrl()}/api/designs`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  return parseJsonResponse<SaveDesignResponse>(response)
 }

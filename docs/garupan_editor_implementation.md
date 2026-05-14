@@ -60,3 +60,30 @@
 5. ギャラリー
    - Flutterの `CollaborationTemplateGridView` 相当はダミー。
    - 共有デザインの読み込み、テンプレ適用、初回自動オープン条件を移植する。
+
+## Flutter版との挙動差分
+
+| 項目 | Flutter版 | `/garupan` 現実装 |
+|---|---|---|
+| 選択枠 | `ThemeColor.selectedBorder` = `#12CDD7`、3px相当、アイテム外側に描画 | SVG内で `#12CDD7` / 3px。絵文字スタンプの正方形サイズに合わせて描画 |
+| 削除ハンドル | 左上、白い32px円、黒いcloseアイコン、タップで削除 | 左上、白円、`×` 表示。pointer downで即削除 |
+| 回転ハンドル | 右上、白い32px円、黒い回転アイコン、ドラッグで中心基準回転 | 右上、白円、`↻` 表示。SVG座標で中心基準回転 |
+| 拡縮ハンドル | 右下、白い32px円、黒い拡縮アイコン、ドラッグで拡縮 | 右下、白円、`↘` 表示。回転済み左上からの距離で拡縮 |
+| 移動 | 選択中アイテム全面をドラッグ | スタンプ本体をドラッグ |
+| 選択解除 | デザイン領域外側タップで `unselectedDesignProvider` | SVGキャンバスの空き領域pointer downで解除 |
+| ピンチ拡縮 | Flutter共通エディタ側のズーム/操作系に依存 | 未対応。Webではハンドルドラッグで拡縮 |
+| Undo/Redo | `designDataServiceProvider.saveState()` と履歴更新 | 未対応 |
+
+## 使用ライブラリ
+
+- 追加ライブラリなし。
+- React state と SVG Pointer Events のみで実装。
+- Flutter版の `DesignItemMoveHandler` / `DesignItemRotateHandler` / `DesignItemScaleHandler` の考え方に合わせ、移動・回転・拡縮を別ジェスチャーとして扱う。
+
+## 未対応項目
+
+- 実画像/実SVG素材の自然サイズに応じた矩形選択枠。
+- ハンドルアイコンのFlutter SVGアセット完全一致。
+- ハンドルサイズを画面ズームに対して常に32px固定にする処理。
+- ピンチ拡縮、二本指回転、undo/redo、レイヤー順変更。
+- 見切れ・重なり・IP制約違反時の赤枠表示。

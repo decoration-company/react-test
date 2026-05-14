@@ -128,17 +128,40 @@ body.garupan-editor-body * {
   cursor: grabbing;
 }
 
-.garupan-stamp-node rect {
-  fill: rgb(255 255 255 / 78%);
-  stroke: #f08200;
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
-}
-
 .garupan-stamp-node text {
   paint-order: stroke;
   stroke: rgb(255 255 255 / 72%);
   stroke-width: 3px;
+}
+
+.garupan-selection-box {
+  pointer-events: none;
+}
+
+.garupan-edit-handle {
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.garupan-edit-handle.is-rotate {
+  cursor: grab;
+}
+
+.garupan-edit-handle.is-scale {
+  cursor: nwse-resize;
+}
+
+.garupan-edit-handle circle {
+  fill: #fff;
+  filter: drop-shadow(0 0 1px #9e9e9e) drop-shadow(0 0 1px #9e9e9e);
+}
+
+.garupan-edit-handle text {
+  fill: #000;
+  stroke: none;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 800;
+  user-select: none;
 }
 
 .garupan-tool-panel {
