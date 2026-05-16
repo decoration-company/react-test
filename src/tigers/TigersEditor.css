@@ -28,31 +28,23 @@ body.tigers-editor-body * {
 
 .tigers-editor {
   display: flex;
-}
-
-.tigers-editor.is-step-stamp .tigers-editor__left {
-  flex: 3 1 0;
-}
-
-.tigers-editor.is-step-stamp .tigers-editor__right {
-  flex: 5 1 0;
+  flex-direction: column;
 }
 
 .tigers-editor__left,
 .tigers-editor__right {
   min-width: 0;
-  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .tigers-editor__left {
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #dddddd;
+  flex: 0 0 auto;
 }
 
 .tigers-editor__right {
-  display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .tigers-editor__header {
@@ -121,12 +113,16 @@ body.tigers-editor-body * {
 
 .tigers-preview-area {
   display: flex;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  height: 420px;
   flex-direction: column;
   gap: 12px;
-  padding: 20px;
+  padding: 24px 16px;
   background: #fafafa;
+}
+
+.tigers-editor.is-step-stamp .tigers-preview-area {
+  height: 280px;
 }
 
 .tigers-selected-ribbon {
@@ -538,7 +534,7 @@ body.tigers-editor-body * {
 }
 
 .tigers-design-preview__pixel9a-svg {
-  width: min(100%, 190px);
+  width: min(100%, 180px);
   max-height: 100%;
   aspect-ratio: 207.87 / 441.93;
   overflow: visible;
@@ -719,33 +715,16 @@ body.tigers-editor-body * {
   accent-color: #ffe100;
 }
 
-@media (max-width: 767px) {
-  .tigers-editor {
-    flex-direction: column;
+@media (min-width: 768px) {
+  body.tigers-editor-body {
+    background: #f0f0f0;
   }
 
-  .tigers-editor__left {
-    flex: 0 0 auto;
-    border-right: 0;
-  }
-
-  .tigers-editor__right {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  .tigers-preview-area {
-    height: 420px;
-    flex: 0 0 auto;
-    padding: 24px 16px;
-  }
-
-  .tigers-editor.is-step-stamp .tigers-preview-area {
-    height: 280px;
-  }
-
-  .tigers-design-preview__pixel9a-svg {
-    width: min(100%, 180px);
+  .tigers-editor,
+  .tigers-preview-page {
+    max-width: 480px;
+    margin: 0 auto;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.08);
   }
 }
 
