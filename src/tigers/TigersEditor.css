@@ -18,8 +18,9 @@ body.tigers-editor-body * {
 
 .tigers-editor,
 .tigers-preview-page {
-  min-height: 100svh;
+  height: 100svh;
   width: 100%;
+  overflow: hidden;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   letter-spacing: 0;
   color: #212121;
@@ -640,6 +641,7 @@ body.tigers-editor-body * {
 
 .tigers-preview-page__mockup {
   display: grid;
+  flex: 0 0 auto;
   place-items: center;
   height: 280px;
 }

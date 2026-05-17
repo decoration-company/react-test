@@ -291,7 +291,7 @@ function PreviewScreen({
   onBack: () => void
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const [postToGallery, setPostToGallery] = useState(true)
+  const [postToGallery] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const parentOrigin = useMemo(() => embeddedParentOrigin(), [])
@@ -372,22 +372,9 @@ function PreviewScreen({
             <span aria-hidden="true">!</span>
             <p>{saveError}</p>
           </div>
-        ) : (
-          <div className="tigers-preview-note">
-            <span aria-hidden="true">i</span>
-            <p>このデザインはカートに入れる際に自動でマイデザインへ保存されます。</p>
-          </div>
-        )}
+        ) : null}
       </div>
       <footer className="tigers-preview-page__footer">
-        <label className="tigers-gallery-check">
-          <input
-            type="checkbox"
-            checked={postToGallery}
-            onChange={event => setPostToGallery(event.target.checked)}
-          />
-          <span>ギャラリーへ投稿する</span>
-        </label>
         <button type="button" className="tigers-primary-button" onClick={save} disabled={isSaving}>
           {isSaving ? '保存中...' : 'カートに入れる'}
         </button>
@@ -404,7 +391,10 @@ export function TigersEditor({ variant }: { variant: string | null }) {
   const availableStamps = useMemo(() => tigersStampsOnSale(), [])
 
   const [currentStep, setCurrentStep] = useState<TigersStep>('stamp')
-  const [selectedStamps, setSelectedStamps] = useState<TigersStamp[]>([])
+  const [selectedStamps, setSelectedStamps] = useState<TigersStamp[]>(() => {
+    const firstStamp = tigersStampsOnSale()[0]
+    return firstStamp ? [firstStamp] : []
+  })
   const [selectedLayout, setSelectedLayout] = useState<TigersLayout>(tigersLayouts[0])
   const [selectedBackground, setSelectedBackground] = useState<TigersBackground>(visibleTigersBackgrounds[0])
 
