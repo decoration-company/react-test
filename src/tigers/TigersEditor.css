@@ -115,15 +115,21 @@ body.tigers-editor-body * {
 .tigers-preview-area {
   display: flex;
   flex: 0 0 auto;
-  height: 420px;
+  height: clamp(240px, 32svh, 300px);
   flex-direction: column;
   gap: 12px;
-  padding: 24px 16px;
+  padding: 16px;
+  overflow: hidden;
   background: #fafafa;
 }
 
 .tigers-editor.is-step-stamp .tigers-preview-area {
-  height: 280px;
+  height: clamp(220px, 32svh, 280px);
+}
+
+.tigers-editor.is-step-layout .tigers-preview-area,
+.tigers-editor.is-step-background .tigers-preview-area {
+  height: clamp(240px, 32svh, 300px);
 }
 
 .tigers-selected-ribbon {
@@ -159,6 +165,7 @@ body.tigers-editor-body * {
   display: grid;
   flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
   place-items: center;
 }
 
@@ -269,6 +276,11 @@ body.tigers-editor-body * {
   justify-content: center;
   gap: 16px 12px;
   padding: 0 20px;
+}
+
+.tigers-background-options {
+  display: grid;
+  grid-template-columns: repeat(3, 70px);
 }
 
 .tigers-layout-option,
@@ -532,18 +544,32 @@ body.tigers-editor-body * {
   width: 100%;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
+  padding: 18px;
 }
 
 .tigers-design-preview__pixel9a-svg {
-  width: min(100%, 180px);
+  display: block;
+  width: auto;
+  max-width: 100%;
   max-height: 100%;
   aspect-ratio: 207.87 / 441.93;
   overflow: visible;
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.08));
 }
 
 .tigers-design-preview--print .tigers-design-preview__pixel9a-svg {
   filter: none;
+}
+
+.tigers-preview-area .tigers-design-preview__pixel9a-svg {
+  height: clamp(160px, 20svh, 210px);
+}
+
+.tigers-design-preview__pixel9a-shadow {
+  fill: #ffffff;
+  stroke: transparent;
+  stroke-width: 0;
+  vector-effect: non-scaling-stroke;
 }
 
 .tigers-design-preview__pixel9a-base {
@@ -643,7 +669,18 @@ body.tigers-editor-body * {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  height: 280px;
+  height: clamp(280px, 46svh, 380px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tigers-preview-page__mockup .tigers-design-preview {
+  padding: 24px;
+}
+
+.tigers-preview-page__mockup .tigers-design-preview__pixel9a-svg {
+  height: 100%;
+  max-height: 100%;
 }
 
 .tigers-preview-card {
@@ -732,7 +769,7 @@ body.tigers-editor-body * {
 
 @media (max-width: 379px) {
   .tigers-preview-page__mockup {
-    height: 260px;
+    height: clamp(240px, 44svh, 320px);
   }
 
   .tigers-section-title h2 {

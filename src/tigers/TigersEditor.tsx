@@ -177,6 +177,10 @@ function LayoutSelection({
   const activeSlotIndex = activeSlot % slotCount
   const showAdditionalStamps = slotCount > 1
 
+  useEffect(() => {
+    setActiveSlot(selectedLayout?.id === 'double' ? 1 : 0)
+  }, [selectedLayout?.id])
+
   return (
     <div className="tigers-layout-selection">
       <div className="tigers-layout-options">
@@ -415,6 +419,15 @@ export function TigersEditor({ variant }: { variant: string | null }) {
     })
   }
 
+  function selectLayout(layout: TigersLayout) {
+    setSelectedLayout(layout)
+    setSelectedStamps(prev => {
+      const fallback = prev[0] ?? availableStamps[0]
+      if (!fallback) return prev
+      return Array.from({ length: layout.stampCount }, (_, index) => prev[index] ?? fallback)
+    })
+  }
+
   function canJump(step: TigersStep): boolean {
     if (step === 'layout') return selectedStamps.length > 0
     if (step === 'background') return selectedStamps.length >= selectedLayout.stampCount
@@ -467,10 +480,10 @@ export function TigersEditor({ variant }: { variant: string | null }) {
   }
 
   const text = stepTexts(currentStep)
-  const isStepSelectStamp = currentStep === 'stamp'
+  const stepClass = `is-step-${currentStep}`
 
   return (
-    <section className={`tigers-editor ${isStepSelectStamp ? 'is-step-stamp' : ''}`}>
+    <section className={`tigers-editor ${stepClass}`}>
       <div className="tigers-editor__left">
         <header className="tigers-editor__header">
           <div className="tigers-editor__header-side">
@@ -525,7 +538,7 @@ export function TigersEditor({ variant }: { variant: string | null }) {
               stamps={availableStamps}
               selectedLayout={selectedLayout}
               selectedStamps={selectedStamps}
-              onSelectLayout={setSelectedLayout}
+              onSelectLayout={selectLayout}
               onSelectLayoutStamp={selectLayoutStamp}
             />
           ) : null}
