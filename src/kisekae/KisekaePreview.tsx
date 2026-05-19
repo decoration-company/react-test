@@ -7,7 +7,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import { parseGripCaseClipSvg, type SvgShapeResult } from '../verify/parseSvgPath'
+import { fetchPrintSpec } from '../verify/fetchPrintSpec'
+import {
+  fetchAndParseGripCaseClip,
+  type SvgShapeResult,
+} from '../verify/parseSvgPath'
 
 const IMAGE_MIN_SCALE = 0.1
 const IMAGE_MAX_SCALE = 4
@@ -82,19 +86,6 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
-/**
- * variant = "iphone-16-pro-kisekae"
- * device  = "iphone-16-pro"  (strip "-kisekae" suffix)
- */
-function assetPaths(variant: string) {
-  const device = variant.replace(/-kisekae$/, '')
-  const base = `/assets/${device}/kisekae`
-  return {
-    clip: `${base}/${variant}_clip.svg`,
-    baseImage: `${base}/${variant}_base.png`,
-  }
-}
-
 export function KisekaePreview({ variant }: { variant: string }) {
   const clipId = useId().replace(/:/g, '')
 
@@ -104,6 +95,7 @@ export function KisekaePreview({ variant }: { variant: string }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const [baseImageUrl, setBaseImageUrl] = useState<string | null>(null)
   const [baseImageSize, setBaseImageSize] = useState<{ width: number; height: number } | null>(null)
 
   const [imageUrl, setImageUrl] = useState<string | null>(null)
@@ -119,9 +111,7 @@ export function KisekaePreview({ variant }: { variant: string }) {
     transformRef.current = transform
   }, [transform])
 
-  const paths = assetPaths(variant)
-
-  // Load clip SVG + base image size
+  // Load print spec + base image size from commerce API
   useEffect(() => {
     let cancelled = false
 
@@ -129,23 +119,30 @@ export function KisekaePreview({ variant }: { variant: string }) {
       if (cancelled) return
       setLoading(true)
       setLoadError(null)
+      setPrintAreaShape(null)
+      setBleedAreaShape(null)
+      setBaseImageUrl(null)
+      setBaseImageSize(null)
     })
 
     async function load() {
       try {
-        const [svgRes, imgSize] = await Promise.all([
-          fetch(paths.clip).then(r => {
-            if (!r.ok) throw new Error(`clip SVG 取得失敗: HTTP ${r.status}`)
-            return r.text()
-          }),
-          readNaturalSize(paths.baseImage).catch(() => null),
-        ])
+        const spec = await fetchPrintSpec(variant)
         if (cancelled) return
 
-        const parts = parseGripCaseClipSvg(svgRes)
+        const parts = await fetchAndParseGripCaseClip(spec.print_spec.print_area_svg_url)
+        if (cancelled) return
+
+        const remoteBaseImageUrl = spec.print_spec.base_image_url
+        const usableBaseImageUrl = remoteBaseImageUrl
+          ? await readNaturalSize(remoteBaseImageUrl).then(size => ({ url: remoteBaseImageUrl, size })).catch(() => null)
+          : null
+        if (cancelled) return
+
         setPrintAreaShape(parts.printArea)
         setBleedAreaShape(parts.bleedArea)
-        setBaseImageSize(imgSize)
+        setBaseImageUrl(usableBaseImageUrl?.url ?? null)
+        setBaseImageSize(usableBaseImageUrl?.size ?? null)
       } catch (e) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : 'ロード失敗')
       } finally {
@@ -155,7 +152,7 @@ export function KisekaePreview({ variant }: { variant: string }) {
 
     load()
     return () => { cancelled = true }
-  }, [paths.clip, paths.baseImage])
+  }, [variant])
 
   const onFile = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -274,7 +271,7 @@ export function KisekaePreview({ variant }: { variant: string }) {
 
   if (loading) return <p style={{ padding: 24 }}>Loading...</p>
   if (loadError) return <p style={{ padding: 24, color: 'red' }}>Error: {loadError}</p>
-  if (!printAreaShape || !canvasSize || !viewBoxAttr) return <p style={{ padding: 24, color: 'red' }}>SVG ロード失敗</p>
+  if (!printAreaShape || !canvasSize || !viewBoxAttr) return <p style={{ padding: 24, color: 'red' }}>印刷仕様の取得に失敗しました</p>
 
   return (
     <section style={{ maxWidth: 600, margin: '0 auto', padding: 16, fontFamily: 'system-ui, sans-serif' }}>
@@ -329,14 +326,16 @@ export function KisekaePreview({ variant }: { variant: string }) {
             </clipPath>
           </defs>
 
-          {/* base image — full canvas */}
-          <image
-            href={paths.baseImage}
-            x="0" y="0"
-            width={canvasSize.width}
-            height={canvasSize.height}
-            preserveAspectRatio="none"
-          />
+          {/* base image — full canvas (skipped if commerce did not return base_image_url) */}
+          {baseImageUrl && (
+            <image
+              href={baseImageUrl}
+              x="0" y="0"
+              width={canvasSize.width}
+              height={canvasSize.height}
+              preserveAspectRatio="none"
+            />
+          )}
 
           {/* user design clipped to print_area */}
           {imageUrl && transform && transformAttr && (
