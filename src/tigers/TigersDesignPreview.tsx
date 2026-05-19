@@ -33,22 +33,28 @@ function PatternStamp({
   const sourceWidth = base.width * 0.8
   const sourceHeight = base.height * 0.8
   const gap = Math.max(sourceWidth, sourceHeight) * 1.1
-  const columns = Math.ceil(designWidth / gap) + 3
-  const rows = Math.ceil(designHeight / gap) + 3
+  const baseOffsetX = -(sourceWidth * 0.42)
+  const baseOffsetY = -(sourceHeight * 0.25)
+  const maxX = designWidth * 1.5
+  const maxY = designHeight * 1.5
+  const rows = Math.ceil(maxY / gap)
 
-  return Array.from({ length: rows }).flatMap((_, row) =>
-    Array.from({ length: columns }).map((__, col) => (
-          <image
-            key={`${row}-${col}`}
-            href={stamp.imagePath}
-            x={col * gap - gap}
-            y={row * gap - gap}
-            width={sourceWidth}
-            height={sourceHeight}
-            preserveAspectRatio="xMidYMid meet"
-          />
-        )),
-  )
+  return Array.from({ length: rows }).flatMap((_, row) => {
+    const startX = row % 2 === 0 ? 0 : gap
+    const columns = Math.ceil((maxX - startX) / (gap * 2))
+
+    return Array.from({ length: columns }).map((__, col) => (
+      <image
+        key={`${row}-${col}`}
+        href={stamp.imagePath}
+        x={baseOffsetX + startX + col * gap * 2}
+        y={baseOffsetY + row * gap}
+        width={sourceWidth}
+        height={sourceHeight}
+        preserveAspectRatio="xMidYMid meet"
+      />
+    ))
+  })
 }
 
 function stampRect({
@@ -96,6 +102,7 @@ export const TigersDesignPreview = forwardRef<SVGSVGElement, TigersDesignPreview
   const designHeight = selectedItem.printHeight
   const viewBox = `0 0 ${designWidth} ${designHeight}`
   const maskId = 'tigers-pixel9a-mask'
+  const shadowId = 'tigers-pixel9a-shadow'
 
   return (
     <div className={`tigers-design-preview tigers-design-preview--${mode}`}>
@@ -107,11 +114,33 @@ export const TigersDesignPreview = forwardRef<SVGSVGElement, TigersDesignPreview
         aria-label={`${selectedItem.modelName} ${selectedItem.materialName} プレビュー`}
       >
         <defs>
+          <filter
+            id={shadowId}
+            x="-40"
+            y="-40"
+            width={designWidth + 80}
+            height={designHeight + 100}
+            filterUnits="userSpaceOnUse"
+            colorInterpolationFilters="sRGB"
+          >
+            <feDropShadow dx="-2" dy="-2" stdDeviation="6" floodColor="#000000" floodOpacity="0.06" />
+            <feDropShadow dx="3" dy="6" stdDeviation="4" floodColor="#000000" floodOpacity="0.18" />
+            <feDropShadow dx="0" dy="8" stdDeviation="5" floodColor="#000000" floodOpacity="0.10" />
+            <feDropShadow dx="2" dy="3" stdDeviation="1.5" floodColor="#000000" floodOpacity="0.15" />
+          </filter>
           <mask id={maskId} maskUnits="userSpaceOnUse">
             <rect x="0" y="0" width={designWidth} height={designHeight} fill="#000000" />
             <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#ffffff" fillRule="evenodd" />
           </mask>
         </defs>
+        {mode === 'mockup' ? (
+          <path
+            className="tigers-design-preview__pixel9a-shadow"
+            d={PIXEL_9A_CASE_CLIP_PATH_D}
+            fillRule="evenodd"
+            filter={`url(#${shadowId})`}
+          />
+        ) : null}
         <path
           className="tigers-design-preview__pixel9a-base"
           d={PIXEL_9A_CASE_CLIP_PATH_D}
