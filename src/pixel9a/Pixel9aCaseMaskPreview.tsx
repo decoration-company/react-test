@@ -78,8 +78,11 @@ type ShopifyDesignReadyMessage = {
   variant: string
   spec_id: string
   design_id: string
+  composed_image_url: string
+  preview_image_url: string
   preview_url: string
   print_image_url: string
+  thumbnail_image_url: string
 }
 
 function embeddedParentOrigin(): string {
@@ -334,8 +337,11 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
           variant,
           spec_id: result.design_id,
           design_id: result.design_id,
+          composed_image_url: result.composed_image_url,
+          preview_image_url: result.preview_image_url,
           preview_url: result.preview_image_url,
           print_image_url: result.composed_image_url,
+          thumbnail_image_url: result.preview_image_url,
         }
         window.parent.postMessage(message, parentOrigin)
         return
@@ -356,8 +362,11 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
       variant,
       spec_id: saveResult.design_id,
       design_id: saveResult.design_id,
+      composed_image_url: saveResult.composed_image_url,
+      preview_image_url: saveResult.preview_image_url,
       preview_url: saveResult.preview_image_url,
       print_image_url: saveResult.composed_image_url,
+      thumbnail_image_url: saveResult.preview_image_url,
     }
     window.parent.postMessage(message, parentOrigin)
   }, [parentOrigin, saveResult, variant])
