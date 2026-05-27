@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { fetchPrintSpec, type PrintSpec } from './fetchPrintSpec'
 import {
+  fetchAndParseDiaryCaseClip,
   fetchAndParseGripCaseClip,
   fetchAndParseSvgPath,
   svgPathToShape,
@@ -256,11 +257,15 @@ export function VerifyPreview({
         if (cancelled) return
         setSpec(data)
 
+        const isDiaryCase = data.product_type.code === 'diary-case'
+
         try {
-          logDebug('parseGripCaseClip:start', { url: data.print_spec.print_area_svg_url })
-          const parts = await fetchAndParseGripCaseClip(data.print_spec.print_area_svg_url)
+          const parts = isDiaryCase
+            ? await fetchAndParseDiaryCaseClip(data.print_spec.print_area_svg_url)
+            : await fetchAndParseGripCaseClip(data.print_spec.print_area_svg_url)
           if (!cancelled) {
-            logDebug('parseGripCaseClip:success', {
+            logDebug('parseCaseClip:success', {
+              caseType: data.product_type.code,
               printArea: summarizeShape(parts.printArea),
               safeArea: summarizeShape(parts.safeArea),
               bleedArea: summarizeShape(parts.bleedArea),
@@ -268,9 +273,13 @@ export function VerifyPreview({
             setPrintAreaShape(parts.printArea)
             setSafeAreaShape(parts.safeArea)
             setBleedAreaShape(parts.bleedArea)
+            if (embedBulk && isDiaryCase) {
+              setShowSafeArea(false)
+              setShowBleedArea(false)
+            }
           }
         } catch (e) {
-          logWarn('parseGripCaseClip:failed; falling back to path parser', e)
+          logWarn('parseCaseClip:failed; falling back to path parser', e)
           try {
             const pa = svgPathToShape(await fetchAndParseSvgPath(data.print_spec.print_area_svg_url))
             if (!cancelled) {
@@ -509,7 +518,7 @@ export function VerifyPreview({
     pointersRef.current.set(event.pointerId, point)
 
     const points = [...pointersRef.current.values()]
-    if (points.length >= 2) {
+    if (points.length >= 2 && !embedBulk) {
       gestureRef.current = {
         kind: 'pinch',
         startDistance: dist(points[0], points[1]),
@@ -526,7 +535,7 @@ export function VerifyPreview({
       startPoint: point,
       startTransform: transform,
     }
-  }, [transform])
+  }, [embedBulk, transform])
 
   const onPointerMove = useCallback((event: PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current
@@ -600,6 +609,7 @@ export function VerifyPreview({
   }, [transform, updateTransform])
 
   const baseImageUrl = activeBaseImageUrl
+  const isDiaryCase = spec?.product_type.code === 'diary-case'
   const clipSize = printAreaShape?.viewBox
   const canvasSize = clipSize ? (baseImageSize ?? clipSize) : null
   const viewBoxAttr = canvasSize ? `0 0 ${canvasSize.width} ${canvasSize.height}` : undefined
@@ -755,7 +765,7 @@ export function VerifyPreview({
 
       {embedLayout ? (
         <p style={{ margin: '0 0 8px', fontSize: 13, color: '#616161' }}>
-          ドラッグ・ピンチ・ホイールで配置。別画像は下の「画像を選ぶ」から差し替えできます。
+          ドラッグで位置を調整。拡大縮小は下のスライダーを使ってください。
         </p>
       ) : null}
 
@@ -774,18 +784,38 @@ export function VerifyPreview({
           <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
           画像を選ぶ
         </label>
-        {safeAreaShape && (
+        {safeAreaShape && !embedLayout ? (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={showSafeArea} onChange={e => setShowSafeArea(e.target.checked)} />
             Safe Area
           </label>
-        )}
-        {bleedAreaShape && (
+        ) : null}
+        {bleedAreaShape && !embedLayout ? (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={showBleedArea} onChange={e => setShowBleedArea(e.target.checked)} />
             Bleed Area
           </label>
-        )}
+        ) : null}
+        {embedLayout && transform ? (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 200px', minWidth: 200 }}>
+            <span style={{ fontSize: 13, whiteSpace: 'nowrap' }}>拡大縮小</span>
+            <input
+              type="range"
+              min={IMAGE_MIN_SCALE}
+              max={IMAGE_MAX_SCALE}
+              step={0.05}
+              value={transform.scale}
+              style={{ flex: 1 }}
+              onChange={e => {
+                const nextScale = clamp(Number(e.target.value), IMAGE_MIN_SCALE, IMAGE_MAX_SCALE)
+                updateTransform(t => ({ ...t, scale: nextScale }))
+              }}
+            />
+            <span style={{ fontSize: 12, color: '#616161', minWidth: 36 }}>
+              {Math.round(transform.scale * 100)}%
+            </span>
+          </label>
+        ) : null}
       </div>
       {fileError && <p style={{ color: 'red' }}>{fileError}</p>}
 
@@ -799,25 +829,34 @@ export function VerifyPreview({
             border: '1px solid #ddd',
             borderRadius: 8,
             overflow: 'hidden',
-            background: '#f7f8fa',
+            background: '#f0f0f0',
             maxWidth: embedLayout ? '100%' : undefined,
+            padding: embedLayout ? 12 : 0,
+            boxSizing: 'border-box',
           }}
         >
           <svg
             ref={svgRef}
             viewBox={viewBoxAttr}
             preserveAspectRatio="xMidYMid meet"
-            style={{ display: 'block', width: '100%', maxHeight: '70vh', touchAction: 'none' }}
+            style={{
+              display: 'block',
+              width: '100%',
+              margin: '0 auto',
+              maxHeight: embedLayout ? 'min(78vh, 880px)' : '70vh',
+              minHeight: embedLayout ? 'min(52vh, 520px)' : undefined,
+              touchAction: 'none',
+            }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerEnd}
             onPointerCancel={onPointerEnd}
-            onWheel={onWheel}
+            onWheel={embedBulk ? undefined : onWheel}
           >
             <style>
               {`
                 .verify-preview__part--paper * {
-                  fill: #fff !important;
+                  fill: ${embedLayout && isDiaryCase ? 'transparent' : '#fff'} !important;
                   stroke: #d1d5db !important;
                   stroke-width: 0.5 !important;
                   vector-effect: non-scaling-stroke;
@@ -896,13 +935,14 @@ export function VerifyPreview({
               )}
             </defs>
 
-            {/* White background in print area shape */}
-            <g className="verify-preview__part--paper">
-              <g
-                transform={guideTransform}
-                dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
-              />
-            </g>
+            {!(embedLayout && isDiaryCase) ? (
+              <g className="verify-preview__part--paper">
+                <g
+                  transform={guideTransform}
+                  dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
+                />
+              </g>
+            ) : null}
 
             {/* Base image */}
             {baseImageUrl && (

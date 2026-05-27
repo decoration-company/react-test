@@ -337,6 +337,64 @@ export function svgPathToShape(path: SvgPathResult): SvgShapeResult {
   }
 }
 
+function escapePathAttr(d: string): string {
+  return d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+}
+
+/** 手帳型 diary_clip: デザイン面は #actual-size、カメラ穴は evenodd で抜く */
+export function parseDiaryCaseClipSvg(svgText: string): GripCaseClipParts {
+  const { doc, viewBox } = parseSvgDocument(svgText)
+  const actualEl = doc.getElementById('actual-size')
+  if (!actualEl) {
+    throw new Error('SVG 解析失敗: #actual-size が見つかりません')
+  }
+
+  const cameraEl = doc.getElementById('camera-hole')
+  let clipMarkup: string
+  let imageFillMarkup: string
+
+  if (cameraEl?.localName === 'path' && actualEl.localName === 'path') {
+    const actualD = actualEl.getAttribute('d')?.trim() ?? ''
+    const cameraD = cameraEl.getAttribute('d')?.trim() ?? ''
+    const combined = `${actualD} ${cameraD}`.trim()
+    const rule = 'evenodd'
+    clipMarkup = `<path d="${escapePathAttr(combined)}" fill="#000" stroke="none" fill-rule="${rule}" clip-rule="${rule}" />`
+    imageFillMarkup = clipMarkup
+  } else {
+    clipMarkup = serializeClipSvgPart(doc, 'actual-size') ?? ''
+    imageFillMarkup = serializeImageFillSvgPart(doc, 'actual-size') ?? ''
+    if (!clipMarkup || !imageFillMarkup) {
+      throw new Error('SVG 解析失敗: #actual-size のクリップを生成できません')
+    }
+  }
+
+  const outlineMarkup = serializeSvgPart(doc, 'actual-size') ?? clipMarkup
+  const bleedMarkup = serializeSvgPart(doc, 'bleed')
+
+  const printArea: SvgShapeResult = {
+    markup: outlineMarkup,
+    clipMarkup,
+    imageFillMarkup,
+    viewBox,
+  }
+
+  return {
+    printArea,
+    safeArea: null,
+    bleedArea: bleedMarkup
+      ? { markup: bleedMarkup, clipMarkup: bleedMarkup, imageFillMarkup: bleedMarkup, viewBox }
+      : null,
+  }
+}
+
+export async function fetchAndParseDiaryCaseClip(url: string): Promise<GripCaseClipParts> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`SVG 取得失敗: HTTP ${response.status}`)
+  }
+  return parseDiaryCaseClipSvg(await response.text())
+}
+
 export async function fetchAndParseGripCaseClip(url: string): Promise<GripCaseClipParts> {
   logSvg('fetchAndParseGripCaseClip:start', { url })
   const response = await fetch(url)
