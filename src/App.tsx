@@ -4,6 +4,7 @@ import { RenderTestPage } from './test/RenderTestPage'
 import { TigersEditor } from './tigers/TigersEditor'
 import { VerifyPreview } from './verify/VerifyPreview'
 import { KisekaePreview } from './kisekae/KisekaePreview'
+import { BulkCellEmbed } from './bulk/BulkCellEmbed'
 import './App.css'
 
 function App() {
@@ -11,6 +12,10 @@ function App() {
   const params = new URLSearchParams(window.location.search)
   const mode = params.get('mode')
   const variant = params.get('variant')
+
+  if (mode === 'bulk') {
+    return <BulkCellEmbed />
+  }
 
   if (path === '/test/render') {
     return <RenderTestPage />

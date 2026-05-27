@@ -169,7 +169,33 @@ function summarizeImageUrl(url: string | null): Record<string, unknown> | null {
   }
 }
 
-export function VerifyPreview({ variant }: { variant: string }) {
+export type BulkEmbedConfig = {
+  parentOrigin: string
+  deviceName: string
+  initialDesignUrl?: string | null
+}
+
+export type BulkCellSaveMessage = {
+  type: 'decocom:bulk-cell:save'
+  variant: string
+  designImageUrl: string | null
+  placement: {
+    centerX: number
+    centerY: number
+    imageWidth: number
+    imageHeight: number
+    scale: number
+    rotationRad: number
+  }
+}
+
+export function VerifyPreview({
+  variant,
+  embedBulk,
+}: {
+  variant: string
+  embedBulk?: BulkEmbedConfig
+}) {
   const clipId = useId().replace(/:/g, '')
   const imagePatternId = `${clipId}-image-pattern`
 
@@ -394,6 +420,73 @@ export function VerifyPreview({ variant }: { variant: string }) {
       setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
     }
   }, [baseImageSize, clipId, imagePatternId, printAreaShape])
+
+  const loadImageFromUrl = useCallback(
+    async (url: string) => {
+      setFileError(null)
+      const size = await readNaturalSize(url)
+      if (!printAreaShape) {
+        setFileError('印刷エリアの読み込み後にもう一度お試しください。')
+        return
+      }
+      const canvas = baseImageSize ?? printAreaShape.viewBox
+      const coverScale = Math.max(canvas.width / size.width, canvas.height / size.height)
+      const nextTransform = {
+        centerX: canvas.width / 2,
+        centerY: canvas.height / 2,
+        imageWidth: size.width * coverScale,
+        imageHeight: size.height * coverScale,
+        scale: 1,
+        rotationRad: 0,
+      }
+      setImageUrl(url)
+      setTransform(nextTransform)
+    },
+    [baseImageSize, printAreaShape],
+  )
+
+  useEffect(() => {
+    const initialUrl = embedBulk?.initialDesignUrl
+    if (!initialUrl || !printAreaShape) return
+    let cancelled = false
+    loadImageFromUrl(initialUrl).catch(err => {
+      if (!cancelled) {
+        setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [embedBulk?.initialDesignUrl, loadImageFromUrl, printAreaShape])
+
+  const postToParent = useCallback(
+    (payload: BulkCellSaveMessage | { type: 'decocom:bulk-cell:cancel' }) => {
+      const target = embedBulk?.parentOrigin ?? '*'
+      window.parent.postMessage(payload, target)
+    },
+    [embedBulk?.parentOrigin],
+  )
+
+  const handleBulkSave = useCallback(() => {
+    if (!transform || !imageUrl) {
+      setFileError('画像を配置してから保存してください。')
+      return
+    }
+    const message: BulkCellSaveMessage = {
+      type: 'decocom:bulk-cell:save',
+      variant,
+      designImageUrl: imageUrl.startsWith('data:') ? imageUrl : imageUrl,
+      placement: {
+        centerX: transform.centerX,
+        centerY: transform.centerY,
+        imageWidth: transform.imageWidth,
+        imageHeight: transform.imageHeight,
+        scale: transform.scale,
+        rotationRad: transform.rotationRad,
+      },
+    }
+    postToParent(message)
+  }, [imageUrl, postToParent, transform, variant])
 
   const updateTransform = useCallback((updater: (t: ImageTransform) => ImageTransform) => {
     setTransform(prev => {
@@ -642,17 +735,38 @@ export function VerifyPreview({ variant }: { variant: string }) {
   if (specError) return <p style={{ color: 'red' }}>Error: {specError}</p>
   if (!spec) return <p style={{ color: 'red' }}>spec not loaded</p>
 
-  return (
-    <section style={{ maxWidth: 800, margin: '0 auto', padding: 16, fontFamily: 'system-ui, sans-serif' }}>
-      <h1 style={{ fontSize: 18 }}>Verify: {spec.device.name} {spec.product_type.name}</h1>
+  const embedLayout = Boolean(embedBulk)
 
-      {/* Spec JSON */}
-      <details open>
-        <summary>Print Spec (JSON)</summary>
-        <pre style={{ background: '#f5f5f5', padding: 12, overflow: 'auto', fontSize: 12 }}>
-          {JSON.stringify(spec, null, 2)}
-        </pre>
-      </details>
+  return (
+    <section
+      style={{
+        maxWidth: embedLayout ? '100%' : 800,
+        margin: '0 auto',
+        padding: embedLayout ? '12px 12px 72px' : 16,
+        fontFamily: 'system-ui, sans-serif',
+        boxSizing: 'border-box',
+      }}
+    >
+      <h1 style={{ fontSize: embedLayout ? 16 : 18, margin: '0 0 8px' }}>
+        {embedLayout
+          ? `${embedBulk?.deviceName ?? spec.device.name}（${spec.product_type.name}）`
+          : `Verify: ${spec.device.name} ${spec.product_type.name}`}
+      </h1>
+
+      {embedLayout ? (
+        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#616161' }}>
+          ドラッグ・ピンチ・ホイールで配置。別画像は下の「画像を選ぶ」から差し替えできます。
+        </p>
+      ) : null}
+
+      {!embedLayout ? (
+        <details open>
+          <summary>Print Spec (JSON)</summary>
+          <pre style={{ background: '#f5f5f5', padding: 12, overflow: 'auto', fontSize: 12 }}>
+            {JSON.stringify(spec, null, 2)}
+          </pre>
+        </details>
+      ) : null}
 
       {/* Controls */}
       <div style={{ margin: '12px 0', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -680,7 +794,15 @@ export function VerifyPreview({ variant }: { variant: string }) {
 
       {/* SVG Preview */}
       {printAreaShape && canvasSize && viewBoxAttr && (
-        <div style={{ border: '1px solid #ddd', borderRadius: 8, overflow: 'hidden', background: '#f7f8fa' }}>
+        <div
+          style={{
+            border: '1px solid #ddd',
+            borderRadius: 8,
+            overflow: 'hidden',
+            background: '#f7f8fa',
+            maxWidth: embedLayout ? '100%' : undefined,
+          }}
+        >
           <svg
             ref={svgRef}
             viewBox={viewBoxAttr}
@@ -875,13 +997,61 @@ export function VerifyPreview({ variant }: { variant: string }) {
         </div>
       )}
 
-      {/* Placement info JSON */}
-      <details open style={{ marginTop: 12 }}>
-        <summary>Placement Info (JSON)</summary>
-        <pre style={{ background: '#f5f5f5', padding: 12, overflow: 'auto', fontSize: 12 }}>
-          {JSON.stringify(placementInfo, null, 2)}
-        </pre>
-      </details>
+      {!embedLayout ? (
+        <details open style={{ marginTop: 12 }}>
+          <summary>Placement Info (JSON)</summary>
+          <pre style={{ background: '#f5f5f5', padding: 12, overflow: 'auto', fontSize: 12 }}>
+            {JSON.stringify(placementInfo, null, 2)}
+          </pre>
+        </details>
+      ) : null}
+
+      {embedBulk ? (
+        <footer
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            gap: 8,
+            justifyContent: 'flex-end',
+            padding: '12px 16px',
+            background: '#fff',
+            borderTop: '1px solid #e3e3e5',
+            boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => postToParent({ type: 'decocom:bulk-cell:cancel' })}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 8,
+              border: '1px solid #c9cccf',
+              background: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            onClick={handleBulkSave}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 8,
+              border: 'none',
+              background: '#008060',
+              color: '#fff',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            保存
+          </button>
+        </footer>
+      ) : null}
     </section>
   )
 }
