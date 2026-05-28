@@ -1099,14 +1099,12 @@ export function VerifyPreview({
                     />
                   </g>
                 </g>
-                {!isDiaryCase ? (
-                  <g
-                    data-verify-image-fill="true"
-                    className="verify-preview__image-fill"
-                    transform={guideTransform}
-                    dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
-                  />
-                ) : null}
+                <g
+                  data-verify-image-fill="true"
+                  className="verify-preview__image-fill"
+                  transform={guideTransform}
+                  dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
+                />
               </>
             )}
 
