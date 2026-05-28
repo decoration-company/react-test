@@ -23,8 +23,11 @@ const IMAGE_MAX_SCALE = 4
 const MAX_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const LOG_PREFIX = '[verify-preview]'
-/** embed 固定フッター分（section の paddingBottom と一致） */
+/** embed 固定フッター（保存・キャンセル） */
 const EMBED_FOOTER_HEIGHT_PX = 56
+/** embed 下部ツールバー（画像変更・拡大縮小） */
+const EMBED_TOOLBAR_HEIGHT_PX = 96
+const EMBED_BOTTOM_CHROME_PX = EMBED_FOOTER_HEIGHT_PX + EMBED_TOOLBAR_HEIGHT_PX
 
 type ImageTransform = {
   centerX: number
@@ -791,7 +794,7 @@ export function VerifyPreview({
         minHeight: embedLayout ? '100vh' : undefined,
         maxWidth: embedLayout ? '100%' : 800,
         margin: '0 auto',
-        padding: embedLayout ? `8px 8px ${EMBED_FOOTER_HEIGHT_PX}px` : 16,
+        padding: embedLayout ? `8px 8px ${EMBED_BOTTOM_CHROME_PX}px` : 16,
         fontFamily: 'system-ui, sans-serif',
         boxSizing: 'border-box',
         overflow: embedLayout ? 'hidden' : undefined,
@@ -806,7 +809,7 @@ export function VerifyPreview({
 
         {embedLayout ? (
           <p style={{ margin: '4px 0 0', fontSize: 12, color: '#616161' }}>
-            ドラッグで位置を調整。拡大縮小はスライダーを使ってください。
+            ドラッグで位置を調整。拡大縮小・画像変更は画面下部の操作欄を使ってください。
           </p>
         ) : null}
       </header>
@@ -820,55 +823,35 @@ export function VerifyPreview({
         </details>
       ) : null}
 
-      {/* Controls */}
-      <div
-        style={{
-          margin: embedLayout ? '8px 0' : '12px 0',
-          display: 'flex',
-          gap: 8,
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          flexShrink: embedLayout ? 0 : undefined,
-        }}
-      >
-        <label style={{ padding: '6px 12px', background: '#4f46e5', color: '#fff', borderRadius: 4, cursor: 'pointer' }}>
-          <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
-          画像を選ぶ
-        </label>
-        {safeAreaShape && !embedLayout ? (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input type="checkbox" checked={showSafeArea} onChange={e => setShowSafeArea(e.target.checked)} />
-            Safe Area
+      {!embedLayout ? (
+        <div
+          style={{
+            margin: '12px 0',
+            display: 'flex',
+            gap: 8,
+            flexWrap: 'wrap',
+            alignItems: 'center',
+          }}
+        >
+          <label style={{ padding: '6px 12px', background: '#4f46e5', color: '#fff', borderRadius: 4, cursor: 'pointer' }}>
+            <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
+            画像を選ぶ
           </label>
-        ) : null}
-        {bleedAreaShape ? (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <input type="checkbox" checked={showBleedArea} onChange={e => setShowBleedArea(e.target.checked)} />
-            {isDiaryCase ? '塗り足し' : 'Bleed Area'}
-          </label>
-        ) : null}
-        {embedLayout && transform ? (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: '1 1 200px', minWidth: 200 }}>
-            <span style={{ fontSize: 13, whiteSpace: 'nowrap' }}>拡大縮小</span>
-            <input
-              type="range"
-              min={IMAGE_MIN_SCALE}
-              max={IMAGE_MAX_SCALE}
-              step={0.05}
-              value={transform.scale}
-              style={{ flex: 1 }}
-              onChange={e => {
-                const nextScale = clamp(Number(e.target.value), IMAGE_MIN_SCALE, IMAGE_MAX_SCALE)
-                updateTransform(t => ({ ...t, scale: nextScale }))
-              }}
-            />
-            <span style={{ fontSize: 12, color: '#616161', minWidth: 36 }}>
-              {Math.round(transform.scale * 100)}%
-            </span>
-          </label>
-        ) : null}
-      </div>
-      {fileError && <p style={{ color: 'red' }}>{fileError}</p>}
+          {safeAreaShape ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input type="checkbox" checked={showSafeArea} onChange={e => setShowSafeArea(e.target.checked)} />
+              Safe Area
+            </label>
+          ) : null}
+          {bleedAreaShape ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <input type="checkbox" checked={showBleedArea} onChange={e => setShowBleedArea(e.target.checked)} />
+              {isDiaryCase ? '塗り足し' : 'Bleed Area'}
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+      {fileError && <p style={{ color: 'red', flexShrink: embedLayout ? 0 : undefined }}>{fileError}</p>}
 
       {/* SVG errors */}
       {printAreaError && <p style={{ color: 'red' }}>Print Area SVG: {printAreaError}</p>}
@@ -1180,6 +1163,63 @@ export function VerifyPreview({
             {JSON.stringify(placementInfo, null, 2)}
           </pre>
         </details>
+      ) : null}
+
+      {embedBulk ? (
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: EMBED_FOOTER_HEIGHT_PX,
+            zIndex: 2,
+            padding: '10px 12px',
+            background: '#fff',
+            borderTop: '1px solid #e3e3e5',
+            boxShadow: '0 -1px 6px rgba(0,0,0,0.05)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+          }}
+        >
+          <label
+            style={{
+              alignSelf: 'flex-start',
+              padding: '8px 14px',
+              background: '#4f46e5',
+              color: '#fff',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
+            画像を変更
+          </label>
+          {transform ? (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+              <span style={{ fontSize: 13, whiteSpace: 'nowrap', fontWeight: 600 }}>拡大縮小</span>
+              <input
+                type="range"
+                min={IMAGE_MIN_SCALE}
+                max={IMAGE_MAX_SCALE}
+                step={0.05}
+                value={transform.scale}
+                style={{ flex: 1, minWidth: 0 }}
+                onChange={e => {
+                  const nextScale = clamp(Number(e.target.value), IMAGE_MIN_SCALE, IMAGE_MAX_SCALE)
+                  updateTransform(t => ({ ...t, scale: nextScale }))
+                }}
+              />
+              <span style={{ fontSize: 12, color: '#616161', minWidth: 40, textAlign: 'right' }}>
+                {Math.round(transform.scale * 100)}%
+              </span>
+            </label>
+          ) : (
+            <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>画像を選ぶと拡大縮小できます</p>
+          )}
+        </div>
       ) : null}
 
       {embedBulk ? (
