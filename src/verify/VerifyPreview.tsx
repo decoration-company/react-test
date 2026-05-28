@@ -14,6 +14,7 @@ import {
   fetchAndParseGripCaseClip,
   fetchAndParseSvgPath,
   svgPathToShape,
+  type DiaryGuideLayer,
   type SvgShapeResult,
 } from './parseSvgPath'
 
@@ -22,6 +23,8 @@ const IMAGE_MAX_SCALE = 4
 const MAX_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const LOG_PREFIX = '[verify-preview]'
+/** embed 固定フッター分（section の paddingBottom と一致） */
+const EMBED_FOOTER_HEIGHT_PX = 56
 
 type ImageTransform = {
   centerX: number
@@ -160,6 +163,21 @@ function summarizeShape(shape: SvgShapeResult | null): Record<string, unknown> |
   }
 }
 
+function diaryGuideLayerClass(role: DiaryGuideLayer['role']): string {
+  switch (role) {
+    case 'body':
+      return 'verify-preview__part--body'
+    case 'spine':
+      return 'verify-preview__part--spine'
+    case 'camera':
+      return 'verify-preview__part--camera'
+    case 'stitch':
+      return 'verify-preview__part--stitch'
+    default:
+      return 'verify-preview__part--body'
+  }
+}
+
 function summarizeImageUrl(url: string | null): Record<string, unknown> | null {
   if (!url) return null
   return {
@@ -208,6 +226,7 @@ export function VerifyPreview({
   const [printAreaError, setPrintAreaError] = useState<string | null>(null)
   const [safeAreaShape, setSafeAreaShape] = useState<SvgShapeResult | null>(null)
   const [bleedAreaShape, setBleedAreaShape] = useState<SvgShapeResult | null>(null)
+  const [diaryGuideLayers, setDiaryGuideLayers] = useState<DiaryGuideLayer[]>([])
   const [showSafeArea, setShowSafeArea] = useState(true)
   const [showBleedArea, setShowBleedArea] = useState(true)
 
@@ -246,6 +265,7 @@ export function VerifyPreview({
       setPrintAreaShape(null)
       setSafeAreaShape(null)
       setBleedAreaShape(null)
+      setDiaryGuideLayers([])
 
       try {
         const data = await fetchPrintSpec(variant)
@@ -260,22 +280,33 @@ export function VerifyPreview({
         const isDiaryCase = data.product_type.code === 'diary-case'
 
         try {
-          const parts = isDiaryCase
-            ? await fetchAndParseDiaryCaseClip(data.print_spec.print_area_svg_url)
-            : await fetchAndParseGripCaseClip(data.print_spec.print_area_svg_url)
-          if (!cancelled) {
-            logDebug('parseCaseClip:success', {
-              caseType: data.product_type.code,
-              printArea: summarizeShape(parts.printArea),
-              safeArea: summarizeShape(parts.safeArea),
-              bleedArea: summarizeShape(parts.bleedArea),
-            })
-            setPrintAreaShape(parts.printArea)
-            setSafeAreaShape(parts.safeArea)
-            setBleedAreaShape(parts.bleedArea)
-            if (embedBulk && isDiaryCase) {
-              setShowSafeArea(false)
-              setShowBleedArea(false)
+          if (isDiaryCase) {
+            const parts = await fetchAndParseDiaryCaseClip(data.print_spec.print_area_svg_url)
+            if (!cancelled) {
+              logDebug('parseCaseClip:success', {
+                caseType: data.product_type.code,
+                printArea: summarizeShape(parts.printArea),
+                bleedArea: summarizeShape(parts.bleedArea),
+                guideLayerIds: parts.guideLayers.map(layer => layer.id),
+              })
+              setPrintAreaShape(parts.printArea)
+              setSafeAreaShape(null)
+              setBleedAreaShape(parts.bleedArea)
+              setDiaryGuideLayers(parts.guideLayers)
+            }
+          } else {
+            const parts = await fetchAndParseGripCaseClip(data.print_spec.print_area_svg_url)
+            if (!cancelled) {
+              logDebug('parseCaseClip:success', {
+                caseType: data.product_type.code,
+                printArea: summarizeShape(parts.printArea),
+                safeArea: summarizeShape(parts.safeArea),
+                bleedArea: summarizeShape(parts.bleedArea),
+              })
+              setPrintAreaShape(parts.printArea)
+              setSafeAreaShape(parts.safeArea)
+              setBleedAreaShape(parts.bleedArea)
+              setDiaryGuideLayers([])
             }
           }
         } catch (e) {
@@ -746,28 +777,39 @@ export function VerifyPreview({
   if (!spec) return <p style={{ color: 'red' }}>spec not loaded</p>
 
   const embedLayout = Boolean(embedBulk)
+  const embedFitAspect =
+    embedLayout && canvasSize
+      ? `${canvasSize.width} / ${canvasSize.height}`
+      : undefined
 
   return (
     <section
       style={{
+        display: embedLayout ? 'flex' : undefined,
+        flexDirection: embedLayout ? 'column' : undefined,
+        height: embedLayout ? '100%' : undefined,
+        minHeight: embedLayout ? '100vh' : undefined,
         maxWidth: embedLayout ? '100%' : 800,
         margin: '0 auto',
-        padding: embedLayout ? '12px 12px 72px' : 16,
+        padding: embedLayout ? `8px 8px ${EMBED_FOOTER_HEIGHT_PX}px` : 16,
         fontFamily: 'system-ui, sans-serif',
         boxSizing: 'border-box',
+        overflow: embedLayout ? 'hidden' : undefined,
       }}
     >
-      <h1 style={{ fontSize: embedLayout ? 16 : 18, margin: '0 0 8px' }}>
-        {embedLayout
-          ? `${embedBulk?.deviceName ?? spec.device.name}（${spec.product_type.name}）`
-          : `Verify: ${spec.device.name} ${spec.product_type.name}`}
-      </h1>
+      <header style={{ flexShrink: embedLayout ? 0 : undefined }}>
+        <h1 style={{ fontSize: embedLayout ? 15 : 18, margin: embedLayout ? 0 : '0 0 8px' }}>
+          {embedLayout
+            ? `${embedBulk?.deviceName ?? spec.device.name}（${spec.product_type.name}）`
+            : `Verify: ${spec.device.name} ${spec.product_type.name}`}
+        </h1>
 
-      {embedLayout ? (
-        <p style={{ margin: '0 0 8px', fontSize: 13, color: '#616161' }}>
-          ドラッグで位置を調整。拡大縮小は下のスライダーを使ってください。
-        </p>
-      ) : null}
+        {embedLayout ? (
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#616161' }}>
+            ドラッグで位置を調整。拡大縮小はスライダーを使ってください。
+          </p>
+        ) : null}
+      </header>
 
       {!embedLayout ? (
         <details open>
@@ -779,7 +821,16 @@ export function VerifyPreview({
       ) : null}
 
       {/* Controls */}
-      <div style={{ margin: '12px 0', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div
+        style={{
+          margin: embedLayout ? '8px 0' : '12px 0',
+          display: 'flex',
+          gap: 8,
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          flexShrink: embedLayout ? 0 : undefined,
+        }}
+      >
         <label style={{ padding: '6px 12px', background: '#4f46e5', color: '#fff', borderRadius: 4, cursor: 'pointer' }}>
           <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
           画像を選ぶ
@@ -790,10 +841,10 @@ export function VerifyPreview({
             Safe Area
           </label>
         ) : null}
-        {bleedAreaShape && !embedLayout ? (
+        {bleedAreaShape ? (
           <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <input type="checkbox" checked={showBleedArea} onChange={e => setShowBleedArea(e.target.checked)} />
-            Bleed Area
+            {isDiaryCase ? '塗り足し' : 'Bleed Area'}
           </label>
         ) : null}
         {embedLayout && transform ? (
@@ -826,25 +877,54 @@ export function VerifyPreview({
       {printAreaShape && canvasSize && viewBoxAttr && (
         <div
           style={{
-            border: '1px solid #ddd',
-            borderRadius: 8,
-            overflow: 'hidden',
-            background: '#f0f0f0',
-            maxWidth: embedLayout ? '100%' : undefined,
-            padding: embedLayout ? 12 : 0,
-            boxSizing: 'border-box',
+            flex: embedLayout ? 1 : undefined,
+            minHeight: embedLayout ? 0 : undefined,
+            display: embedLayout ? 'flex' : undefined,
+            alignItems: embedLayout ? 'center' : undefined,
+            justifyContent: embedLayout ? 'center' : undefined,
+            width: '100%',
           }}
         >
-          <svg
+          <div
+            style={{
+              border: '1px solid #ddd',
+              borderRadius: 8,
+              overflow: embedLayout ? 'visible' : 'hidden',
+              background: '#f0f0f0',
+              width: embedLayout ? '100%' : undefined,
+              height: embedLayout ? '100%' : undefined,
+              maxWidth: '100%',
+              maxHeight: embedLayout ? '100%' : undefined,
+              padding: embedLayout ? 8 : 0,
+              boxSizing: 'border-box',
+              display: embedLayout ? 'flex' : undefined,
+              alignItems: embedLayout ? 'center' : undefined,
+              justifyContent: embedLayout ? 'center' : undefined,
+            }}
+          >
+            <div
+              style={
+                embedFitAspect
+                  ? {
+                      aspectRatio: embedFitAspect,
+                      width: '100%',
+                      height: 'auto',
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                    }
+                  : { width: '100%' }
+              }
+            >
+              <svg
             ref={svgRef}
             viewBox={viewBoxAttr}
             preserveAspectRatio="xMidYMid meet"
             style={{
               display: 'block',
               width: '100%',
+              height: embedLayout ? '100%' : undefined,
               margin: '0 auto',
-              maxHeight: embedLayout ? 'min(78vh, 880px)' : '70vh',
-              minHeight: embedLayout ? 'min(52vh, 520px)' : undefined,
+              maxHeight: embedLayout ? undefined : '70vh',
               touchAction: 'none',
             }}
             onPointerDown={onPointerDown}
@@ -856,10 +936,38 @@ export function VerifyPreview({
             <style>
               {`
                 .verify-preview__part--paper * {
-                  fill: ${embedLayout && isDiaryCase ? 'transparent' : '#fff'} !important;
+                  fill: #fff !important;
                   stroke: #d1d5db !important;
                   stroke-width: 0.5 !important;
                   vector-effect: non-scaling-stroke;
+                }
+                .verify-preview__part--body * {
+                  fill: rgba(96, 64, 42, 0.14) !important;
+                  stroke: rgba(78, 52, 34, 0.72) !important;
+                  stroke-width: 0.75px !important;
+                  vector-effect: non-scaling-stroke;
+                }
+                .verify-preview__part--spine * {
+                  fill: rgba(200, 200, 200, 0.28) !important;
+                  stroke: rgba(120, 120, 120, 0.75) !important;
+                  stroke-width: 0.75px !important;
+                  vector-effect: non-scaling-stroke;
+                }
+                .verify-preview__part--camera * {
+                  fill: rgba(24, 24, 24, 0.1) !important;
+                  stroke: rgba(24, 24, 24, 0.55) !important;
+                  stroke-width: 1px !important;
+                  vector-effect: non-scaling-stroke;
+                }
+                .verify-preview__part--stitch * {
+                  fill: none !important;
+                  stroke: rgba(255, 255, 255, 0.95) !important;
+                  stroke-width: 1.5px !important;
+                  stroke-dasharray: 6 3 !important;
+                  stroke-linecap: round !important;
+                  stroke-linejoin: round !important;
+                  vector-effect: non-scaling-stroke;
+                  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
                 }
                 .verify-preview__clip-shape * {
                   fill: #000 !important;
@@ -935,14 +1043,25 @@ export function VerifyPreview({
               )}
             </defs>
 
-            {!(embedLayout && isDiaryCase) ? (
+            {!isDiaryCase ? (
               <g className="verify-preview__part--paper">
                 <g
                   transform={guideTransform}
                   dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
                 />
               </g>
-            ) : null}
+            ) : (
+              diaryGuideLayers
+                .filter(layer => layer.role === 'body' || layer.role === 'spine')
+                .map(layer => (
+                  <g key={layer.id} className={diaryGuideLayerClass(layer.role)}>
+                    <g
+                      transform={guideTransform}
+                      dangerouslySetInnerHTML={{ __html: layer.markup }}
+                    />
+                  </g>
+                ))
+            )}
 
             {/* Base image */}
             {baseImageUrl && (
@@ -997,14 +1116,29 @@ export function VerifyPreview({
                     />
                   </g>
                 </g>
-                <g
-                  data-verify-image-fill="true"
-                  className="verify-preview__image-fill"
-                  transform={guideTransform}
-                  dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
-                />
+                {!isDiaryCase ? (
+                  <g
+                    data-verify-image-fill="true"
+                    className="verify-preview__image-fill"
+                    transform={guideTransform}
+                    dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
+                  />
+                ) : null}
               </>
             )}
+
+            {isDiaryCase
+              ? diaryGuideLayers
+                  .filter(layer => layer.role === 'stitch' || layer.role === 'camera')
+                  .map(layer => (
+                    <g key={layer.id} className={diaryGuideLayerClass(layer.role)}>
+                      <g
+                        transform={guideTransform}
+                        dangerouslySetInnerHTML={{ __html: layer.markup }}
+                      />
+                    </g>
+                  ))
+              : null}
 
             {/* Safe area overlay */}
             {showSafeArea && safeAreaShape && (
@@ -1034,6 +1168,8 @@ export function VerifyPreview({
               />
             </g>
           </svg>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1056,10 +1192,11 @@ export function VerifyPreview({
             display: 'flex',
             gap: 8,
             justifyContent: 'flex-end',
-            padding: '12px 16px',
+            padding: '10px 12px',
             background: '#fff',
             borderTop: '1px solid #e3e3e5',
             boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
+            zIndex: 2,
           }}
         >
           <button

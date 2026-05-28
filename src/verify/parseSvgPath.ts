@@ -17,6 +17,29 @@ export type GripCaseClipParts = {
   bleedArea: SvgShapeResult | null
 }
 
+export type DiaryGuideLayerRole = 'body' | 'spine' | 'camera' | 'stitch'
+
+export type DiaryGuideLayer = {
+  id: string
+  role: DiaryGuideLayerRole
+  markup: string
+}
+
+export type DiaryCaseClipParts = GripCaseClipParts & {
+  guideLayers: DiaryGuideLayer[]
+}
+
+const DIARY_GUIDE_LAYER_SPECS: ReadonlyArray<{ id: string; role: DiaryGuideLayerRole }> = [
+  { id: 'belt-left-body', role: 'body' },
+  { id: 'belt-right-body', role: 'body' },
+  { id: 'actual-size', role: 'body' },
+  { id: 'spine-area', role: 'spine' },
+  { id: 'camera-hole', role: 'camera' },
+  { id: 'stitch-line', role: 'stitch' },
+  { id: 'belt-left-stitch', role: 'stitch' },
+  { id: 'belt-right-stitch', role: 'stitch' },
+]
+
 const SVG_LOG_PREFIX = '[verify-svg]'
 
 function logSvg(message: string, data?: unknown): void {
@@ -341,8 +364,24 @@ function escapePathAttr(d: string): string {
   return d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
 }
 
+function collectDiaryGuideLayers(doc: Document): DiaryGuideLayer[] {
+  const layers: DiaryGuideLayer[] = []
+  for (const spec of DIARY_GUIDE_LAYER_SPECS) {
+    const markup = serializeSvgPart(doc, spec.id)
+    if (!markup) continue
+    layers.push({ id: spec.id, role: spec.role, markup })
+  }
+  logSvg('parseDiaryCaseClipSvg:guideLayers', {
+    found: layers.map(layer => layer.id),
+    missing: DIARY_GUIDE_LAYER_SPECS.map(spec => spec.id).filter(
+      id => !layers.some(layer => layer.id === id),
+    ),
+  })
+  return layers
+}
+
 /** 手帳型 diary_clip: デザイン面は #actual-size、カメラ穴は evenodd で抜く */
-export function parseDiaryCaseClipSvg(svgText: string): GripCaseClipParts {
+export function parseDiaryCaseClipSvg(svgText: string): DiaryCaseClipParts {
   const { doc, viewBox } = parseSvgDocument(svgText)
   const actualEl = doc.getElementById('actual-size')
   if (!actualEl) {
@@ -384,10 +423,11 @@ export function parseDiaryCaseClipSvg(svgText: string): GripCaseClipParts {
     bleedArea: bleedMarkup
       ? { markup: bleedMarkup, clipMarkup: bleedMarkup, imageFillMarkup: bleedMarkup, viewBox }
       : null,
+    guideLayers: collectDiaryGuideLayers(doc),
   }
 }
 
-export async function fetchAndParseDiaryCaseClip(url: string): Promise<GripCaseClipParts> {
+export async function fetchAndParseDiaryCaseClip(url: string): Promise<DiaryCaseClipParts> {
   const response = await fetch(url)
   if (!response.ok) {
     throw new Error(`SVG 取得失敗: HTTP ${response.status}`)
