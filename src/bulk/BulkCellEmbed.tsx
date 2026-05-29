@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { VerifyPreview } from '../verify/VerifyPreview'
+import './bulk-embed.css'
 
 function resolveParentOrigin(raw: string | null): string {
   if (!raw || raw === '*') return '*'
@@ -16,6 +18,11 @@ export function BulkCellEmbed() {
   const deviceName = params.get('device')?.trim() || variant || '商品'
   const parentOrigin = resolveParentOrigin(params.get('origin'))
 
+  useEffect(() => {
+    document.documentElement.classList.add('bulk-embed')
+    return () => document.documentElement.classList.remove('bulk-embed')
+  }, [])
+
   if (!variant) {
     return (
       <main style={{ padding: 16, fontFamily: 'system-ui, sans-serif' }}>
@@ -25,7 +32,15 @@ export function BulkCellEmbed() {
   }
 
   return (
-    <main style={{ margin: 0, padding: 0, minHeight: '100vh', background: '#f6f6f7' }}>
+    <main
+      style={{
+        margin: 0,
+        padding: 0,
+        height: '100%',
+        overflow: 'hidden',
+        background: '#f6f6f7',
+      }}
+    >
       <VerifyPreview
         variant={variant}
         embedBulk={{

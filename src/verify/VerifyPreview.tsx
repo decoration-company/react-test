@@ -23,11 +23,6 @@ const IMAGE_MAX_SCALE = 4
 const MAX_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const LOG_PREFIX = '[verify-preview]'
-/** embed 固定フッター（保存・キャンセル） */
-const EMBED_FOOTER_HEIGHT_PX = 56
-/** embed 下部ツールバー（画像変更・拡大縮小） */
-const EMBED_TOOLBAR_HEIGHT_PX = 96
-const EMBED_BOTTOM_CHROME_PX = EMBED_FOOTER_HEIGHT_PX + EMBED_TOOLBAR_HEIGHT_PX
 
 type ImageTransform = {
   centerX: number
@@ -191,6 +186,34 @@ function summarizeImageUrl(url: string | null): Record<string, unknown> | null {
   }
 }
 
+/** commerce 手帳型は clip SVG を base_image_url に流用しているためラスタとして扱わない */
+function isClipSvgUrl(url: string | null): boolean {
+  if (!url) return false
+  const lower = url.toLowerCase()
+  return lower.endsWith('_clip.svg') || lower.endsWith('/clip.svg')
+}
+
+function resolvePlacementCanvas(
+  isDiaryCase: boolean,
+  clipSize: PreviewSize,
+  baseImageSize: PreviewSize | null,
+): PreviewSize {
+  if (isDiaryCase) return clipSize
+  return baseImageSize ?? clipSize
+}
+
+function buildCoverTransform(canvas: PreviewSize, imageSize: PreviewSize): ImageTransform {
+  const coverScale = Math.max(canvas.width / imageSize.width, canvas.height / imageSize.height)
+  return {
+    centerX: canvas.width / 2,
+    centerY: canvas.height / 2,
+    imageWidth: imageSize.width * coverScale,
+    imageHeight: imageSize.height * coverScale,
+    scale: 1,
+    rotationRad: 0,
+  }
+}
+
 export type BulkEmbedConfig = {
   parentOrigin: string
   deviceName: string
@@ -242,6 +265,7 @@ export function VerifyPreview({
   const pointersRef = useRef(new Map<number, DOMPoint>())
   const gestureRef = useRef<GestureState | null>(null)
   const transformRef = useRef<ImageTransform | null>(null)
+  const loadGenerationRef = useRef(0)
   const activeBaseImageUrl = spec
     ? spec.print_spec.base_image_url ?? deriveBaseImageUrl(spec.print_spec.print_area_svg_url)
     : null
@@ -367,8 +391,9 @@ export function VerifyPreview({
   useEffect(() => {
     let cancelled = false
     const baseImageUrl = activeBaseImageUrl
-    if (!baseImageUrl) {
-      logWarn('baseImage:missing-url', { spec })
+    const isDiaryCase = spec?.product_type.code === 'diary-case'
+    if (!baseImageUrl || (isDiaryCase && isClipSvgUrl(baseImageUrl))) {
+      setLoadedBaseImage(null)
       return
     }
 
@@ -435,21 +460,13 @@ export function VerifyPreview({
         return
       }
 
-      const canvas = baseImageSize ?? printAreaShape.viewBox
-      const coverScale = Math.max(canvas.width / size.width, canvas.height / size.height)
-      const nextTransform = {
-        centerX: canvas.width / 2,
-        centerY: canvas.height / 2,
-        imageWidth: size.width * coverScale,
-        imageHeight: size.height * coverScale,
-        scale: 1,
-        rotationRad: 0,
-      }
+      const isDiaryCase = spec?.product_type.code === 'diary-case'
+      const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
+      const nextTransform = buildCoverTransform(canvas, size)
       logDebug('file:ready-to-render', {
         imageUrl: summarizeImageUrl(url),
         naturalSize: size,
         canvas,
-        coverScale,
         nextTransform,
         clipId,
         imagePatternId,
@@ -462,45 +479,42 @@ export function VerifyPreview({
       logError('file:readNaturalSize:failed', err)
       setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
     }
-  }, [baseImageSize, clipId, imagePatternId, printAreaShape])
+  }, [baseImageSize, clipId, imagePatternId, printAreaShape, spec])
 
-  const loadImageFromUrl = useCallback(
+  const applyDesignImage = useCallback(
     async (url: string) => {
+      const generation = ++loadGenerationRef.current
       setFileError(null)
       const size = await readNaturalSize(url)
+      if (generation !== loadGenerationRef.current) return
       if (!printAreaShape) {
         setFileError('印刷エリアの読み込み後にもう一度お試しください。')
         return
       }
-      const canvas = baseImageSize ?? printAreaShape.viewBox
-      const coverScale = Math.max(canvas.width / size.width, canvas.height / size.height)
-      const nextTransform = {
-        centerX: canvas.width / 2,
-        centerY: canvas.height / 2,
-        imageWidth: size.width * coverScale,
-        imageHeight: size.height * coverScale,
-        scale: 1,
-        rotationRad: 0,
-      }
+      const isDiaryCase = spec?.product_type.code === 'diary-case'
+      const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
+      const nextTransform = buildCoverTransform(canvas, size)
+      if (generation !== loadGenerationRef.current) return
       setImageUrl(url)
       setTransform(nextTransform)
     },
-    [baseImageSize, printAreaShape],
+    [baseImageSize, printAreaShape, spec],
   )
 
   useEffect(() => {
     const initialUrl = embedBulk?.initialDesignUrl
     if (!initialUrl || !printAreaShape) return
     let cancelled = false
-    loadImageFromUrl(initialUrl).catch(err => {
+    applyDesignImage(initialUrl).catch(err => {
       if (!cancelled) {
         setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
       }
     })
     return () => {
       cancelled = true
+      loadGenerationRef.current += 1
     }
-  }, [embedBulk?.initialDesignUrl, loadImageFromUrl, printAreaShape])
+  }, [applyDesignImage, embedBulk?.initialDesignUrl, printAreaShape, baseImageSize, spec?.product_type.code])
 
   const postToParent = useCallback(
     (payload: BulkCellSaveMessage | { type: 'decocom:bulk-cell:cancel' }) => {
@@ -645,7 +659,8 @@ export function VerifyPreview({
   const baseImageUrl = activeBaseImageUrl
   const isDiaryCase = spec?.product_type.code === 'diary-case'
   const clipSize = printAreaShape?.viewBox
-  const canvasSize = clipSize ? (baseImageSize ?? clipSize) : null
+  const canvasSize = clipSize ? resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize) : null
+  const showBaseImage = Boolean(baseImageUrl && !(isDiaryCase && isClipSvgUrl(baseImageUrl)))
   const viewBoxAttr = canvasSize ? `0 0 ${canvasSize.width} ${canvasSize.height}` : undefined
   const needsLegacyGuideTransform = Boolean(
     baseImageSize && clipSize && (baseImageSize.width !== clipSize.width || baseImageSize.height !== clipSize.height),
@@ -791,10 +806,10 @@ export function VerifyPreview({
         display: embedLayout ? 'flex' : undefined,
         flexDirection: embedLayout ? 'column' : undefined,
         height: embedLayout ? '100%' : undefined,
-        minHeight: embedLayout ? '100vh' : undefined,
+        minHeight: embedLayout ? 0 : undefined,
         maxWidth: embedLayout ? '100%' : 800,
         margin: '0 auto',
-        padding: embedLayout ? `8px 8px ${EMBED_BOTTOM_CHROME_PX}px` : 16,
+        padding: embedLayout ? 8 : 16,
         fontFamily: 'system-ui, sans-serif',
         boxSizing: 'border-box',
         overflow: embedLayout ? 'hidden' : undefined,
@@ -1047,7 +1062,7 @@ export function VerifyPreview({
             )}
 
             {/* Base image */}
-            {baseImageUrl && (
+            {showBaseImage && baseImageUrl && (
               <image
                 data-verify-base-image="true"
                 href={baseImageUrl}
@@ -1099,12 +1114,14 @@ export function VerifyPreview({
                     />
                   </g>
                 </g>
-                <g
-                  data-verify-image-fill="true"
-                  className="verify-preview__image-fill"
-                  transform={guideTransform}
-                  dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
-                />
+                {!isDiaryCase ? (
+                  <g
+                    data-verify-image-fill="true"
+                    className="verify-preview__image-fill"
+                    transform={guideTransform}
+                    dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
+                  />
+                ) : null}
               </>
             )}
 
@@ -1166,15 +1183,10 @@ export function VerifyPreview({
       {embedBulk ? (
         <div
           style={{
-            position: 'fixed',
-            left: 0,
-            right: 0,
-            bottom: EMBED_FOOTER_HEIGHT_PX,
-            zIndex: 2,
+            flexShrink: 0,
             padding: '10px 12px',
             background: '#fff',
             borderTop: '1px solid #e3e3e5',
-            boxShadow: '0 -1px 6px rgba(0,0,0,0.05)',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
@@ -1223,18 +1235,13 @@ export function VerifyPreview({
       {embedBulk ? (
         <footer
           style={{
-            position: 'fixed',
-            left: 0,
-            right: 0,
-            bottom: 0,
+            flexShrink: 0,
             display: 'flex',
             gap: 8,
             justifyContent: 'flex-end',
             padding: '10px 12px',
             background: '#fff',
             borderTop: '1px solid #e3e3e5',
-            boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
-            zIndex: 2,
           }}
         >
           <button
