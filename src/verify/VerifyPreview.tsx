@@ -1,5 +1,6 @@
 import {
   type ChangeEvent,
+  type CSSProperties,
   type PointerEvent,
   useCallback,
   useEffect,
@@ -15,6 +16,7 @@ import {
   fetchAndParseSvgPath,
   svgPathToShape,
   type DiaryGuideLayer,
+  type DiaryPrintMask,
   type SvgShapeResult,
 } from './parseSvgPath'
 
@@ -100,22 +102,39 @@ function clientToSvg(svg: SVGSVGElement, clientX: number, clientY: number): DOMP
 }
 
 function readNaturalSize(src: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.onload = () => {
-      logDebug('readNaturalSize:onload', {
-        src: summarizeImageUrl(src),
-        naturalWidth: img.naturalWidth,
-        naturalHeight: img.naturalHeight,
-      })
-      resolve({ width: img.naturalWidth, height: img.naturalHeight })
-    }
-    img.onerror = () => {
-      logError('readNaturalSize:onerror', { src: summarizeImageUrl(src) })
-      reject(new Error('画像を読み込めませんでした'))
-    }
-    img.src = src
-  })
+  const isRemote = src.startsWith('http://') || src.startsWith('https://')
+
+  const tryLoad = (useCrossOrigin: boolean): Promise<{ width: number; height: number }> =>
+    new Promise((resolve, reject) => {
+      const img = new Image()
+      if (isRemote && useCrossOrigin) {
+        img.crossOrigin = 'anonymous'
+      }
+      img.onload = () => {
+        logDebug('readNaturalSize:onload', {
+          src: summarizeImageUrl(src),
+          useCrossOrigin,
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+        })
+        if (img.naturalWidth <= 0 || img.naturalHeight <= 0) {
+          reject(new Error('画像のサイズを取得できませんでした'))
+          return
+        }
+        resolve({ width: img.naturalWidth, height: img.naturalHeight })
+      }
+      img.onerror = () => {
+        logError('readNaturalSize:onerror', { src: summarizeImageUrl(src), useCrossOrigin })
+        reject(new Error('画像を読み込めませんでした'))
+      }
+      img.src = src
+    })
+
+  if (!isRemote) {
+    return tryLoad(false)
+  }
+
+  return tryLoad(true).catch(() => tryLoad(false))
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -214,6 +233,44 @@ function buildCoverTransform(canvas: PreviewSize, imageSize: PreviewSize): Image
   }
 }
 
+function buildDiaryCssMaskUrl(
+  canvasSize: PreviewSize,
+  printMask: DiaryPrintMask,
+  guideTransform?: string,
+): string {
+  const gOpen = guideTransform ? `<g transform="${guideTransform}">` : '<g>'
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${canvasSize.width} ${canvasSize.height}">`,
+    `<rect width="100%" height="100%" fill="black"/>`,
+    gOpen,
+    printMask.showMarkup,
+    printMask.holeMarkup ?? '',
+    '</g>',
+    '</svg>',
+  ].join('')
+  return `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")`
+}
+
+function diaryEmbedImageStyle(
+  transform: ImageTransform,
+  canvasSize: PreviewSize,
+): CSSProperties {
+  const w = transform.imageWidth * transform.scale
+  const h = transform.imageHeight * transform.scale
+  return {
+    position: 'absolute',
+    left: `${((transform.centerX - w / 2) / canvasSize.width) * 100}%`,
+    top: `${((transform.centerY - h / 2) / canvasSize.height) * 100}%`,
+    width: `${(w / canvasSize.width) * 100}%`,
+    height: `${(h / canvasSize.height) * 100}%`,
+    transform: `rotate(${radToDeg(transform.rotationRad)}deg)`,
+    transformOrigin: 'center center',
+    objectFit: 'fill',
+    pointerEvents: 'none',
+    zIndex: 1,
+  }
+}
+
 export type BulkEmbedConfig = {
   parentOrigin: string
   deviceName: string
@@ -243,6 +300,7 @@ export function VerifyPreview({
 }) {
   const clipId = useId().replace(/:/g, '')
   const imagePatternId = `${clipId}-image-pattern`
+  const diaryMaskId = `${clipId}-diary-mask`
 
   const [spec, setSpec] = useState<PrintSpec | null>(null)
   const [specError, setSpecError] = useState<string | null>(null)
@@ -253,6 +311,7 @@ export function VerifyPreview({
   const [safeAreaShape, setSafeAreaShape] = useState<SvgShapeResult | null>(null)
   const [bleedAreaShape, setBleedAreaShape] = useState<SvgShapeResult | null>(null)
   const [diaryGuideLayers, setDiaryGuideLayers] = useState<DiaryGuideLayer[]>([])
+  const [diaryPrintMask, setDiaryPrintMask] = useState<DiaryPrintMask | null>(null)
   const [showSafeArea, setShowSafeArea] = useState(true)
   const [showBleedArea, setShowBleedArea] = useState(true)
 
@@ -265,7 +324,6 @@ export function VerifyPreview({
   const pointersRef = useRef(new Map<number, DOMPoint>())
   const gestureRef = useRef<GestureState | null>(null)
   const transformRef = useRef<ImageTransform | null>(null)
-  const loadGenerationRef = useRef(0)
   const activeBaseImageUrl = spec
     ? spec.print_spec.base_image_url ?? deriveBaseImageUrl(spec.print_spec.print_area_svg_url)
     : null
@@ -293,6 +351,7 @@ export function VerifyPreview({
       setSafeAreaShape(null)
       setBleedAreaShape(null)
       setDiaryGuideLayers([])
+      setDiaryPrintMask(null)
 
       try {
         const data = await fetchPrintSpec(variant)
@@ -320,6 +379,7 @@ export function VerifyPreview({
               setSafeAreaShape(null)
               setBleedAreaShape(parts.bleedArea)
               setDiaryGuideLayers(parts.guideLayers)
+              setDiaryPrintMask(parts.printMask)
             }
           } else {
             const parts = await fetchAndParseGripCaseClip(data.print_spec.print_area_svg_url)
@@ -334,6 +394,7 @@ export function VerifyPreview({
               setSafeAreaShape(parts.safeArea)
               setBleedAreaShape(parts.bleedArea)
               setDiaryGuideLayers([])
+              setDiaryPrintMask(null)
             }
           }
         } catch (e) {
@@ -482,19 +543,22 @@ export function VerifyPreview({
   }, [baseImageSize, clipId, imagePatternId, printAreaShape, spec])
 
   const applyDesignImage = useCallback(
-    async (url: string) => {
-      const generation = ++loadGenerationRef.current
+    async (url: string, abort?: { cancelled: boolean }) => {
       setFileError(null)
       const size = await readNaturalSize(url)
-      if (generation !== loadGenerationRef.current) return
+      if (abort?.cancelled) return
       if (!printAreaShape) {
         setFileError('印刷エリアの読み込み後にもう一度お試しください。')
+        return
+      }
+      if (size.width <= 0 || size.height <= 0) {
+        setFileError('画像のサイズを取得できませんでした')
         return
       }
       const isDiaryCase = spec?.product_type.code === 'diary-case'
       const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
       const nextTransform = buildCoverTransform(canvas, size)
-      if (generation !== loadGenerationRef.current) return
+      if (abort?.cancelled) return
       setImageUrl(url)
       setTransform(nextTransform)
     },
@@ -502,17 +566,16 @@ export function VerifyPreview({
   )
 
   useEffect(() => {
-    const initialUrl = embedBulk?.initialDesignUrl
+    const initialUrl = embedBulk?.initialDesignUrl?.trim()
     if (!initialUrl || !printAreaShape) return
-    let cancelled = false
-    applyDesignImage(initialUrl).catch(err => {
-      if (!cancelled) {
+    const abort = { cancelled: false }
+    applyDesignImage(initialUrl, abort).catch(err => {
+      if (!abort.cancelled) {
         setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
       }
     })
     return () => {
-      cancelled = true
-      loadGenerationRef.current += 1
+      abort.cancelled = true
     }
   }, [applyDesignImage, embedBulk?.initialDesignUrl, printAreaShape, baseImageSize, spec?.product_type.code])
 
@@ -681,6 +744,17 @@ export function VerifyPreview({
   const transformAttr = transform
     ? `translate(${transform.centerX} ${transform.centerY}) rotate(${radToDeg(transform.rotationRad)}) scale(${transform.scale})`
     : undefined
+
+  const diaryDesignMask =
+    isDiaryCase && diaryPrintMask && canvasSize
+      ? `url(#${diaryMaskId})`
+      : undefined
+  const gripDesignClip = !isDiaryCase ? `url(#${clipId})` : undefined
+  const useDiaryHtmlDesign = Boolean(embedBulk && isDiaryCase && diaryPrintMask && canvasSize)
+  const diaryCssMaskUrl = useMemo(() => {
+    if (!useDiaryHtmlDesign || !diaryPrintMask || !canvasSize) return null
+    return buildDiaryCssMaskUrl(canvasSize, diaryPrintMask, guideTransform)
+  }, [canvasSize, diaryPrintMask, guideTransform, useDiaryHtmlDesign])
 
   const placementInfo = useMemo(() => {
     if (!transform) return null
@@ -909,10 +983,36 @@ export function VerifyPreview({
                       height: 'auto',
                       maxWidth: '100%',
                       maxHeight: '100%',
+                      position: useDiaryHtmlDesign ? 'relative' : undefined,
                     }
-                  : { width: '100%' }
+                  : { width: '100%', position: useDiaryHtmlDesign ? 'relative' : undefined }
               }
             >
+              {useDiaryHtmlDesign && imageUrl && transform && diaryCssMaskUrl ? (
+                <img
+                  src={imageUrl}
+                  alt=""
+                  draggable={false}
+                  data-verify-user-html-image="true"
+                  style={{
+                    ...diaryEmbedImageStyle(transform, canvasSize),
+                    maskImage: diaryCssMaskUrl,
+                    WebkitMaskImage: diaryCssMaskUrl,
+                    maskSize: '100% 100%',
+                    WebkitMaskSize: '100% 100%',
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskRepeat: 'no-repeat',
+                  }}
+                  onLoad={() => logDebug('user-html-image:onLoad', {
+                    imageUrl: summarizeImageUrl(imageUrl),
+                    transform,
+                    diaryCssMaskUrl: diaryCssMaskUrl.slice(0, 80),
+                  })}
+                  onError={() => logError('user-html-image:onError', {
+                    imageUrl: summarizeImageUrl(imageUrl),
+                  })}
+                />
+              ) : null}
               <svg
             ref={svgRef}
             viewBox={viewBoxAttr}
@@ -924,6 +1024,10 @@ export function VerifyPreview({
               margin: '0 auto',
               maxHeight: embedLayout ? undefined : '70vh',
               touchAction: 'none',
+              position: useDiaryHtmlDesign ? 'absolute' : undefined,
+              inset: useDiaryHtmlDesign ? 0 : undefined,
+              zIndex: useDiaryHtmlDesign ? 2 : undefined,
+              background: useDiaryHtmlDesign ? 'transparent' : undefined,
             }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -998,6 +1102,27 @@ export function VerifyPreview({
               `}
             </style>
             <defs>
+              {isDiaryCase && diaryPrintMask && canvasSize ? (
+                <mask
+                  id={diaryMaskId}
+                  maskUnits="userSpaceOnUse"
+                  maskContentUnits="userSpaceOnUse"
+                >
+                  <rect
+                    x="0"
+                    y="0"
+                    width={canvasSize.width}
+                    height={canvasSize.height}
+                    fill="#000000"
+                  />
+                  <g transform={guideTransform}>
+                    <g dangerouslySetInnerHTML={{ __html: diaryPrintMask.showMarkup }} />
+                    {diaryPrintMask.holeMarkup ? (
+                      <g dangerouslySetInnerHTML={{ __html: diaryPrintMask.holeMarkup }} />
+                    ) : null}
+                  </g>
+                </mask>
+              ) : null}
               <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
                 <g
                   transform={guideTransform}
@@ -1085,45 +1210,43 @@ export function VerifyPreview({
               </text>
             ) : null}
 
-            {/* User image clipped to print area */}
-            {imageUrl && transform && transformAttr && (
-              <>
-                <g clipPath={`url(#${clipId})`}>
-                  <g transform={transformAttr}>
-                    <image
-                      data-verify-user-image="true"
-                      href={imageUrl}
-                      x={-transform.imageWidth / 2}
-                      y={-transform.imageHeight / 2}
-                      width={transform.imageWidth}
-                      height={transform.imageHeight}
-                      preserveAspectRatio="none"
-                      onLoad={() => logDebug('user-image-element:onLoad', {
-                        imageUrl: summarizeImageUrl(imageUrl),
-                        transform,
-                        transformAttr,
-                        clipId,
-                      })}
-                      onError={event => logError('user-image-element:onError', {
-                        imageUrl: summarizeImageUrl(imageUrl),
-                        currentSrc: summarizeImageUrl(event.currentTarget.href.baseVal),
-                        transform,
-                        transformAttr,
-                        clipId,
-                      })}
-                    />
-                  </g>
-                </g>
-                {!isDiaryCase ? (
-                  <g
-                    data-verify-image-fill="true"
-                    className="verify-preview__image-fill"
-                    transform={guideTransform}
-                    dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
+            {/* User image clipped/masked to print area (embed 手帳型は HTML img を使用) */}
+            {imageUrl && transform && transformAttr && !useDiaryHtmlDesign ? (
+              <g mask={diaryDesignMask} clipPath={gripDesignClip}>
+                <g transform={transformAttr}>
+                  <image
+                    data-verify-user-image="true"
+                    href={imageUrl}
+                    x={-transform.imageWidth / 2}
+                    y={-transform.imageHeight / 2}
+                    width={transform.imageWidth}
+                    height={transform.imageHeight}
+                    preserveAspectRatio="none"
+                    onLoad={() => logDebug('user-image-element:onLoad', {
+                      imageUrl: summarizeImageUrl(imageUrl),
+                      transform,
+                      transformAttr,
+                      clipId,
+                      diaryMaskId,
+                    })}
+                    onError={event => logError('user-image-element:onError', {
+                      imageUrl: summarizeImageUrl(imageUrl),
+                      currentSrc: summarizeImageUrl(event.currentTarget.href.baseVal),
+                      transform,
+                      transformAttr,
+                      clipId,
+                      diaryMaskId,
+                    })}
                   />
-                ) : null}
-              </>
-            )}
+                </g>
+                <g
+                  data-verify-image-fill="true"
+                  className="verify-preview__image-fill"
+                  transform={guideTransform}
+                  dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
+                />
+              </g>
+            ) : null}
 
             {isDiaryCase
               ? diaryGuideLayers

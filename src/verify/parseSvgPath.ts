@@ -25,8 +25,16 @@ export type DiaryGuideLayer = {
   markup: string
 }
 
+export type DiaryPrintMask = {
+  /** #actual-size — マスクで表示する領域 (白) */
+  showMarkup: string
+  /** #camera-hole — マスクで抜く領域 (黒)。無い機種は null */
+  holeMarkup: string | null
+}
+
 export type DiaryCaseClipParts = GripCaseClipParts & {
   guideLayers: DiaryGuideLayer[]
+  printMask: DiaryPrintMask
 }
 
 const DIARY_GUIDE_LAYER_SPECS: ReadonlyArray<{ id: string; role: DiaryGuideLayerRole }> = [
@@ -275,6 +283,39 @@ function serializeClipSvgPart(doc: Document, partId: string): SvgShapeResult['cl
   return new XMLSerializer().serializeToString(clone)
 }
 
+function serializeMaskSvgPart(doc: Document, partId: string, fill: string): string | null {
+  const source = doc.getElementById(partId)
+  if (!source) return null
+
+  const clone = source.cloneNode(true) as Element
+  clone.removeAttribute('id')
+  stripUnsafeSvgNodes(clone)
+  const elements = [clone, ...clone.querySelectorAll('*')]
+  elements.forEach(el => {
+    const fillRule = elementFillRule(el)
+
+    el.removeAttribute('class')
+    el.removeAttribute('style')
+    el.removeAttribute('opacity')
+    el.removeAttribute('fill-opacity')
+    el.removeAttribute('stroke-opacity')
+    el.removeAttribute('stroke-width')
+    el.removeAttribute('stroke-linecap')
+    el.removeAttribute('stroke-linejoin')
+    el.removeAttribute('vector-effect')
+
+    if (isPaintableSvgElement(el)) {
+      el.setAttribute('fill', fill)
+      el.setAttribute('stroke', 'none')
+      el.setAttribute('fill-opacity', '1')
+      if (fillRule) {
+        el.setAttribute('fill-rule', fillRule)
+      }
+    }
+  })
+  return new XMLSerializer().serializeToString(clone)
+}
+
 function serializeImageFillSvgPart(doc: Document, partId: string): SvgShapeResult['imageFillMarkup'] | null {
   const source = doc.getElementById(partId)
   if (!source) return null
@@ -360,10 +401,6 @@ export function svgPathToShape(path: SvgPathResult): SvgShapeResult {
   }
 }
 
-function escapePathAttr(d: string): string {
-  return d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
-}
-
 function collectDiaryGuideLayers(doc: Document): DiaryGuideLayer[] {
   const layers: DiaryGuideLayer[] = []
   for (const spec of DIARY_GUIDE_LAYER_SPECS) {
@@ -380,7 +417,7 @@ function collectDiaryGuideLayers(doc: Document): DiaryGuideLayer[] {
   return layers
 }
 
-/** 手帳型 diary_clip: デザイン面は #actual-size、カメラ穴は evenodd で抜く */
+/** 手帳型 diary_clip: 印刷面は #actual-size、カメラ穴は #camera-hole でマスク抜き */
 export function parseDiaryCaseClipSvg(svgText: string): DiaryCaseClipParts {
   const { doc, viewBox } = parseSvgDocument(svgText)
   const actualEl = doc.getElementById('actual-size')
@@ -388,24 +425,19 @@ export function parseDiaryCaseClipSvg(svgText: string): DiaryCaseClipParts {
     throw new Error('SVG 解析失敗: #actual-size が見つかりません')
   }
 
-  const cameraEl = doc.getElementById('camera-hole')
-  let clipMarkup: string
-  let imageFillMarkup: string
-
-  if (cameraEl?.localName === 'path' && actualEl.localName === 'path') {
-    const actualD = actualEl.getAttribute('d')?.trim() ?? ''
-    const cameraD = cameraEl.getAttribute('d')?.trim() ?? ''
-    const combined = `${actualD} ${cameraD}`.trim()
-    const rule = 'evenodd'
-    clipMarkup = `<path d="${escapePathAttr(combined)}" fill="#000" stroke="none" fill-rule="${rule}" clip-rule="${rule}" />`
-    imageFillMarkup = clipMarkup
-  } else {
-    clipMarkup = serializeClipSvgPart(doc, 'actual-size') ?? ''
-    imageFillMarkup = serializeImageFillSvgPart(doc, 'actual-size') ?? ''
-    if (!clipMarkup || !imageFillMarkup) {
-      throw new Error('SVG 解析失敗: #actual-size のクリップを生成できません')
-    }
+  const clipMarkup = serializeClipSvgPart(doc, 'actual-size') ?? ''
+  const imageFillMarkup = serializeImageFillSvgPart(doc, 'actual-size') ?? ''
+  if (!clipMarkup || !imageFillMarkup) {
+    throw new Error('SVG 解析失敗: #actual-size のクリップを生成できません')
   }
+
+  const showMarkup = serializeMaskSvgPart(doc, 'actual-size', '#ffffff')
+  if (!showMarkup) {
+    throw new Error('SVG 解析失敗: #actual-size のマスクを生成できません')
+  }
+
+  const cameraEl = doc.getElementById('camera-hole')
+  const holeMarkup = cameraEl ? serializeMaskSvgPart(doc, 'camera-hole', '#000000') : null
 
   const outlineMarkup = serializeSvgPart(doc, 'actual-size') ?? clipMarkup
   const bleedMarkup = serializeSvgPart(doc, 'bleed')
@@ -424,6 +456,7 @@ export function parseDiaryCaseClipSvg(svgText: string): DiaryCaseClipParts {
       ? { markup: bleedMarkup, clipMarkup: bleedMarkup, imageFillMarkup: bleedMarkup, viewBox }
       : null,
     guideLayers: collectDiaryGuideLayers(doc),
+    printMask: { showMarkup, holeMarkup },
   }
 }
 
