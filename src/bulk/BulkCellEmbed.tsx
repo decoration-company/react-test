@@ -15,6 +15,7 @@ export function BulkCellEmbed() {
   const params = new URLSearchParams(window.location.search)
   const variant = params.get('variant')?.trim()
   const designUrl = params.get('design_url')?.trim() || null
+  const designName = params.get('design_name')?.trim() || null
   const deviceName = params.get('device')?.trim() || variant || '商品'
   const parentOrigin = resolveParentOrigin(params.get('origin'))
 
@@ -47,6 +48,7 @@ export function BulkCellEmbed() {
           parentOrigin,
           deviceName,
           initialDesignUrl: designUrl,
+          designLabel: designName,
         }}
       />
     </main>

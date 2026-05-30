@@ -205,6 +205,20 @@ function summarizeImageUrl(url: string | null): Record<string, unknown> | null {
   }
 }
 
+function labelFromImageUrl(url: string, fallbackLabel?: string | null): string {
+  const trimmed = url.trim()
+  if (!trimmed) return fallbackLabel?.trim() || '（未設定）'
+  if (trimmed.startsWith('data:')) return '選択中の画像（未アップロード）'
+  if (trimmed.startsWith('blob:')) return 'プレビュー中のローカル画像'
+  try {
+    const last = new URL(trimmed).pathname.split('/').filter(Boolean).pop()
+    if (last) return decodeURIComponent(last)
+  } catch {
+    // ignore
+  }
+  return fallbackLabel?.trim() || trimmed
+}
+
 /** commerce 手帳型は clip SVG を base_image_url に流用しているためラスタとして扱わない */
 function isClipSvgUrl(url: string | null): boolean {
   if (!url) return false
@@ -275,6 +289,8 @@ export type BulkEmbedConfig = {
   parentOrigin: string
   deviceName: string
   initialDesignUrl?: string | null
+  /** 列名など。URL からファイル名が取れないときのラベル */
+  designLabel?: string | null
 }
 
 export type BulkCellSaveMessage = {
@@ -318,9 +334,12 @@ export function VerifyPreview({
   const [imageUrl, setImageUrl] = useState<string | null>(null)
   const [transform, setTransform] = useState<ImageTransform | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [imageSourceLabel, setImageSourceLabel] = useState<string | null>(null)
   const [loadedBaseImage, setLoadedBaseImage] = useState<{ url: string; size: PreviewSize } | null>(null)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
+  /** ユーザーが「画像を変更」したあと、baseImage 読込で initialDesignUrl を上書きしない */
+  const userOverrodeImageRef = useRef(false)
   const pointersRef = useRef(new Map<number, DOMPoint>())
   const gestureRef = useRef<GestureState | null>(null)
   const transformRef = useRef<ImageTransform | null>(null)
@@ -534,8 +553,10 @@ export function VerifyPreview({
         printAreaShape: summarizeShape(printAreaShape),
       })
 
+      userOverrodeImageRef.current = true
       setImageUrl(url)
       setTransform(nextTransform)
+      setImageSourceLabel(file.name)
     } catch (err) {
       logError('file:readNaturalSize:failed', err)
       setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
@@ -561,13 +582,20 @@ export function VerifyPreview({
       if (abort?.cancelled) return
       setImageUrl(url)
       setTransform(nextTransform)
+      setImageSourceLabel(labelFromImageUrl(url, embedBulk?.designLabel))
     },
-    [baseImageSize, printAreaShape, spec],
+    [baseImageSize, embedBulk?.designLabel, printAreaShape, spec],
   )
+
+  useEffect(() => {
+    userOverrodeImageRef.current = false
+    setImageSourceLabel(null)
+  }, [variant, embedBulk?.initialDesignUrl])
 
   useEffect(() => {
     const initialUrl = embedBulk?.initialDesignUrl?.trim()
     if (!initialUrl || !printAreaShape) return
+    if (userOverrodeImageRef.current) return
     const abort = { cancelled: false }
     applyDesignImage(initialUrl, abort).catch(err => {
       if (!abort.cancelled) {
@@ -577,7 +605,7 @@ export function VerifyPreview({
     return () => {
       abort.cancelled = true
     }
-  }, [applyDesignImage, embedBulk?.initialDesignUrl, printAreaShape, baseImageSize, spec?.product_type.code])
+  }, [applyDesignImage, embedBulk?.initialDesignUrl, printAreaShape, spec?.product_type.code])
 
   const postToParent = useCallback(
     (payload: BulkCellSaveMessage | { type: 'decocom:bulk-cell:cancel' }) => {
@@ -897,9 +925,16 @@ export function VerifyPreview({
         </h1>
 
         {embedLayout ? (
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#616161' }}>
-            ドラッグで位置を調整。拡大縮小・画像変更は画面下部の操作欄を使ってください。
-          </p>
+          <div style={{ margin: '4px 0 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
+              ドラッグで位置を調整。拡大縮小・画像変更は画面下部の操作欄を使ってください。
+            </p>
+            {imageSourceLabel ? (
+              <p style={{ margin: 0, fontSize: 12, color: '#303030', fontWeight: 600 }}>
+                使用中の画像: {imageSourceLabel}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </header>
 
@@ -1330,6 +1365,11 @@ export function VerifyPreview({
             <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
             画像を変更
           </label>
+          {imageSourceLabel ? (
+            <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
+              ファイル: <strong>{imageSourceLabel}</strong>
+            </p>
+          ) : null}
           {transform ? (
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
               <span style={{ fontSize: 13, whiteSpace: 'nowrap', fontWeight: 600 }}>拡大縮小</span>
