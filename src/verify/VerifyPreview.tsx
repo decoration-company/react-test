@@ -810,7 +810,8 @@ export function VerifyPreview({
       ? `url(#${diaryMaskId})`
       : undefined
   const gripDesignClip = !isDiaryCase ? `url(#${clipId})` : undefined
-  const useDiaryHtmlDesign = Boolean(embedBulk && isDiaryCase && diaryPrintMask && canvasSize)
+  // embed でも SVG マスクで描画。HTML img + object-fit は高解像度画像が実寸になりサイズが破綻する。
+  const useDiaryHtmlDesign = false
   const diaryCssMaskUrl = useMemo(() => {
     if (!useDiaryHtmlDesign || !diaryPrintMask || !canvasSize) return null
     return buildDiaryCssMaskUrl(canvasSize, diaryPrintMask, guideTransform)
@@ -1308,7 +1309,7 @@ export function VerifyPreview({
               </text>
             ) : null}
 
-            {/* User image clipped/masked to print area (embed 手帳型は HTML img を使用) */}
+            {/* User image clipped/masked to print area */}
             {imageUrl && transform && transformAttr && !useDiaryHtmlDesign ? (
               <g mask={diaryDesignMask} clipPath={gripDesignClip}>
                 <g transform={transformAttr}>
@@ -1319,7 +1320,7 @@ export function VerifyPreview({
                     y={-transform.imageHeight / 2}
                     width={transform.imageWidth}
                     height={transform.imageHeight}
-                    preserveAspectRatio="none"
+                    preserveAspectRatio="xMidYMid meet"
                     onLoad={() => logDebug('user-image-element:onLoad', {
                       imageUrl: summarizeImageUrl(imageUrl),
                       transform,
