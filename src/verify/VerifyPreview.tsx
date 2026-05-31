@@ -1047,7 +1047,7 @@ export function VerifyPreview({
                 embedFitAspect
                   ? {
                       aspectRatio: embedFitAspect,
-                      width: 'auto',
+                      width: '100%',
                       height: 'auto',
                       maxWidth: '100%',
                       maxHeight: '100%',
@@ -1089,7 +1089,7 @@ export function VerifyPreview({
             style={{
               display: 'block',
               width: '100%',
-              height: embedLayout ? '100%' : undefined,
+              height: embedLayout ? (useDiaryHtmlDesign ? '100%' : 'auto') : undefined,
               margin: '0 auto',
               maxHeight: embedLayout ? undefined : '70vh',
               touchAction: 'none',
