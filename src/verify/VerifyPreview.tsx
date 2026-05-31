@@ -957,15 +957,44 @@ export function VerifyPreview({
         </h1>
 
         {embedLayout ? (
-          <div style={{ margin: '4px 0 0', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ margin: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
-              ドラッグで位置を調整。拡大縮小・画像変更は画面下部の操作欄を使ってください。
+              プレビュー上をドラッグして位置を調整。拡大縮小は下のスライダーから。
             </p>
-            {imageSourceLabel ? (
-              <p style={{ margin: 0, fontSize: 12, color: '#303030', fontWeight: 600 }}>
-                使用中の画像: {imageSourceLabel}
-              </p>
-            ) : null}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <label
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: 8,
+                  border: '1px solid #8c9196',
+                  background: '#fff',
+                  color: '#303030',
+                  cursor: 'pointer',
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={onFile}
+                  style={{ display: 'none' }}
+                />
+                画像を変更
+              </label>
+              {imageSourceLabel ? (
+                <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
+                  使用中: <strong style={{ color: '#303030' }}>{imageSourceLabel}</strong>
+                </p>
+              ) : null}
+            </div>
           </div>
         ) : null}
       </header>
@@ -1377,36 +1406,15 @@ export function VerifyPreview({
           style={{
             flexShrink: 0,
             padding: '10px 12px',
-            background: '#fff',
+            background: '#f6f6f7',
             borderTop: '1px solid #e3e3e5',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
           }}
         >
-          <label
-            style={{
-              alignSelf: 'flex-start',
-              padding: '8px 14px',
-              background: '#4f46e5',
-              color: '#fff',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontSize: 14,
-              fontWeight: 600,
-            }}
-          >
-            <input type="file" accept="image/png,image/jpeg" onChange={onFile} style={{ display: 'none' }} />
-            画像を変更
-          </label>
-          {imageSourceLabel ? (
-            <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
-              ファイル: <strong>{imageSourceLabel}</strong>
-            </p>
-          ) : null}
           {transform ? (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-              <span style={{ fontSize: 13, whiteSpace: 'nowrap', fontWeight: 600 }}>拡大縮小</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', margin: 0 }}>
+              <span style={{ fontSize: 13, whiteSpace: 'nowrap', fontWeight: 600, color: '#303030' }}>
+                拡大縮小
+              </span>
               <input
                 type="range"
                 min={IMAGE_MIN_SCALE}
@@ -1424,7 +1432,9 @@ export function VerifyPreview({
               </span>
             </label>
           ) : (
-            <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>画像を選ぶと拡大縮小できます</p>
+            <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
+              上の「画像を変更」で画像を選ぶと拡大縮小できます
+            </p>
           )}
         </div>
       ) : null}
