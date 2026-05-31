@@ -292,6 +292,8 @@ export type BulkEmbedPlacement = {
   imageHeight: number
   scale: number
   rotationRad: number
+  canvasWidth?: number
+  canvasHeight?: number
 }
 
 export type BulkEmbedConfig = {
@@ -326,6 +328,8 @@ export type BulkCellSaveMessage = {
     imageHeight: number
     scale: number
     rotationRad: number
+    canvasWidth?: number
+    canvasHeight?: number
   }
 }
 
@@ -647,27 +651,6 @@ export function VerifyPreview({
     [embedBulk?.parentOrigin],
   )
 
-  const handleBulkSave = useCallback(() => {
-    if (!transform || !imageUrl) {
-      setFileError('画像を配置してから保存してください。')
-      return
-    }
-    const message: BulkCellSaveMessage = {
-      type: 'decocom:bulk-cell:save',
-      variant,
-      designImageUrl: imageUrl.startsWith('data:') ? imageUrl : imageUrl,
-      placement: {
-        centerX: transform.centerX,
-        centerY: transform.centerY,
-        imageWidth: transform.imageWidth,
-        imageHeight: transform.imageHeight,
-        scale: transform.scale,
-        rotationRad: transform.rotationRad,
-      },
-    }
-    postToParent(message)
-  }, [imageUrl, postToParent, transform, variant])
-
   const updateTransform = useCallback((updater: (t: ImageTransform) => ImageTransform) => {
     setTransform(prev => {
       if (!prev) return prev
@@ -783,6 +766,30 @@ export function VerifyPreview({
   const isDiaryCase = spec?.product_type.code === 'diary-case'
   const clipSize = printAreaShape?.viewBox
   const canvasSize = clipSize ? resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize) : null
+
+  const handleBulkSave = useCallback(() => {
+    if (!transform || !imageUrl || !canvasSize) {
+      setFileError('画像を配置してから保存してください。')
+      return
+    }
+    const message: BulkCellSaveMessage = {
+      type: 'decocom:bulk-cell:save',
+      variant,
+      designImageUrl: imageUrl.startsWith('data:') ? imageUrl : imageUrl,
+      placement: {
+        centerX: transform.centerX,
+        centerY: transform.centerY,
+        imageWidth: transform.imageWidth,
+        imageHeight: transform.imageHeight,
+        scale: transform.scale,
+        rotationRad: transform.rotationRad,
+        canvasWidth: canvasSize.width,
+        canvasHeight: canvasSize.height,
+      },
+    }
+    postToParent(message)
+  }, [canvasSize, imageUrl, postToParent, transform, variant])
+
   const showBaseImage = Boolean(baseImageUrl && !(isDiaryCase && isClipSvgUrl(baseImageUrl)))
   const viewBoxAttr = canvasSize ? `0 0 ${canvasSize.width} ${canvasSize.height}` : undefined
   const needsLegacyGuideTransform = Boolean(
