@@ -279,10 +279,19 @@ function diaryEmbedImageStyle(
     height: `${(h / canvasSize.height) * 100}%`,
     transform: `rotate(${radToDeg(transform.rotationRad)}deg)`,
     transformOrigin: 'center center',
-    objectFit: 'fill',
+    objectFit: 'none',
     pointerEvents: 'none',
     zIndex: 1,
   }
+}
+
+export type BulkEmbedPlacement = {
+  centerX: number
+  centerY: number
+  imageWidth: number
+  imageHeight: number
+  scale: number
+  rotationRad: number
 }
 
 export type BulkEmbedConfig = {
@@ -291,6 +300,19 @@ export type BulkEmbedConfig = {
   initialDesignUrl?: string | null
   /** 列名など。URL からファイル名が取れないときのラベル */
   designLabel?: string | null
+  /** マトリクス保存済み配置（VerifyPreview / commerce と同じ座標系） */
+  initialPlacement?: BulkEmbedPlacement | null
+}
+
+function transformFromPlacement(placement: BulkEmbedPlacement): ImageTransform {
+  return {
+    centerX: placement.centerX,
+    centerY: placement.centerY,
+    imageWidth: placement.imageWidth,
+    imageHeight: placement.imageHeight,
+    scale: placement.scale,
+    rotationRad: placement.rotationRad,
+  }
 }
 
 export type BulkCellSaveMessage = {
@@ -578,19 +600,23 @@ export function VerifyPreview({
       }
       const isDiaryCase = spec?.product_type.code === 'diary-case'
       const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
-      const nextTransform = buildCoverTransform(canvas, size)
+      const savedPlacement = embedBulk?.initialPlacement
+      const nextTransform =
+        savedPlacement != null
+          ? transformFromPlacement(savedPlacement)
+          : buildCoverTransform(canvas, size)
       if (abort?.cancelled) return
       setImageUrl(url)
       setTransform(nextTransform)
       setImageSourceLabel(labelFromImageUrl(url, embedBulk?.designLabel))
     },
-    [baseImageSize, embedBulk?.designLabel, printAreaShape, spec],
+    [baseImageSize, embedBulk?.designLabel, embedBulk?.initialPlacement, printAreaShape, spec],
   )
 
   useEffect(() => {
     userOverrodeImageRef.current = false
     setImageSourceLabel(null)
-  }, [variant, embedBulk?.initialDesignUrl])
+  }, [variant, embedBulk?.initialDesignUrl, embedBulk?.initialPlacement])
 
   useEffect(() => {
     const initialUrl = embedBulk?.initialDesignUrl?.trim()
@@ -605,7 +631,13 @@ export function VerifyPreview({
     return () => {
       abort.cancelled = true
     }
-  }, [applyDesignImage, embedBulk?.initialDesignUrl, printAreaShape, spec?.product_type.code])
+  }, [
+    applyDesignImage,
+    embedBulk?.initialDesignUrl,
+    embedBulk?.initialPlacement,
+    printAreaShape,
+    spec?.product_type.code,
+  ])
 
   const postToParent = useCallback(
     (payload: BulkCellSaveMessage | { type: 'decocom:bulk-cell:cancel' }) => {
@@ -999,7 +1031,8 @@ export function VerifyPreview({
               overflow: embedLayout ? 'visible' : 'hidden',
               background: '#f0f0f0',
               width: embedLayout ? '100%' : undefined,
-              height: embedLayout ? '100%' : undefined,
+              flex: embedLayout ? 1 : undefined,
+              minHeight: embedLayout ? 0 : undefined,
               maxWidth: '100%',
               maxHeight: embedLayout ? '100%' : undefined,
               padding: embedLayout ? 8 : 0,
@@ -1014,10 +1047,11 @@ export function VerifyPreview({
                 embedFitAspect
                   ? {
                       aspectRatio: embedFitAspect,
-                      width: '100%',
+                      width: 'auto',
                       height: 'auto',
                       maxWidth: '100%',
                       maxHeight: '100%',
+                      flexShrink: 0,
                       position: useDiaryHtmlDesign ? 'relative' : undefined,
                     }
                   : { width: '100%', position: useDiaryHtmlDesign ? 'relative' : undefined }
