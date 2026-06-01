@@ -1327,7 +1327,7 @@ export function VerifyPreview({
                     y={-transform.imageHeight / 2}
                     width={transform.imageWidth}
                     height={transform.imageHeight}
-                    preserveAspectRatio="xMidYMid meet"
+                    preserveAspectRatio="none"
                     onLoad={() => logDebug('user-image-element:onLoad', {
                       imageUrl: summarizeImageUrl(imageUrl),
                       transform,

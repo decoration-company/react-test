@@ -26,7 +26,7 @@ export type DiaryGuideLayer = {
 }
 
 export type DiaryPrintMask = {
-  /** #actual-size — マスクで表示する領域 (白) */
+  /** #bleed — マスクで表示する領域 (白)。Flutter 印刷クリップと同じ */
   showMarkup: string
   /** #camera-hole — マスクで抜く領域 (黒)。無い機種は null */
   holeMarkup: string | null
@@ -417,7 +417,36 @@ function collectDiaryGuideLayers(doc: Document): DiaryGuideLayer[] {
   return layers
 }
 
-/** 手帳型 diary_clip: 印刷面は #actual-size、カメラ穴は #camera-hole でマスク抜き */
+function escapePathAttr(d: string): string {
+  return d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+}
+
+/** 手帳型の印刷クリップ = #bleed + #camera-hole (evenOdd)。Flutter と同じ */
+function buildDiaryPrintClipMarkup(doc: Document): { clipMarkup: string; imageFillMarkup: string } {
+  const bleedEl = doc.getElementById('bleed')
+  if (!bleedEl) {
+    throw new Error('SVG 解析失敗: #bleed が見つかりません')
+  }
+
+  const cameraEl = doc.getElementById('camera-hole')
+  if (cameraEl?.localName === 'path' && bleedEl.localName === 'path') {
+    const bleedD = bleedEl.getAttribute('d')?.trim() ?? ''
+    const cameraD = cameraEl.getAttribute('d')?.trim() ?? ''
+    const combined = `${bleedD} ${cameraD}`.trim()
+    const rule = 'evenodd'
+    const markup = `<path d="${escapePathAttr(combined)}" fill="#000" stroke="none" fill-rule="${rule}" clip-rule="${rule}" />`
+    return { clipMarkup: markup, imageFillMarkup: markup }
+  }
+
+  const clipMarkup = serializeClipSvgPart(doc, 'bleed') ?? ''
+  const imageFillMarkup = serializeImageFillSvgPart(doc, 'bleed') ?? ''
+  if (!clipMarkup || !imageFillMarkup) {
+    throw new Error('SVG 解析失敗: #bleed のクリップを生成できません')
+  }
+  return { clipMarkup, imageFillMarkup }
+}
+
+/** 手帳型 diary_clip: デザインは #bleed、ガイド枠は #actual-size */
 export function parseDiaryCaseClipSvg(svgText: string): DiaryCaseClipParts {
   const { doc, viewBox } = parseSvgDocument(svgText)
   const actualEl = doc.getElementById('actual-size')
@@ -425,15 +454,11 @@ export function parseDiaryCaseClipSvg(svgText: string): DiaryCaseClipParts {
     throw new Error('SVG 解析失敗: #actual-size が見つかりません')
   }
 
-  const clipMarkup = serializeClipSvgPart(doc, 'actual-size') ?? ''
-  const imageFillMarkup = serializeImageFillSvgPart(doc, 'actual-size') ?? ''
-  if (!clipMarkup || !imageFillMarkup) {
-    throw new Error('SVG 解析失敗: #actual-size のクリップを生成できません')
-  }
+  const { clipMarkup, imageFillMarkup } = buildDiaryPrintClipMarkup(doc)
 
-  const showMarkup = serializeMaskSvgPart(doc, 'actual-size', '#ffffff')
+  const showMarkup = serializeMaskSvgPart(doc, 'bleed', '#ffffff')
   if (!showMarkup) {
-    throw new Error('SVG 解析失敗: #actual-size のマスクを生成できません')
+    throw new Error('SVG 解析失敗: #bleed のマスクを生成できません')
   }
 
   const cameraEl = doc.getElementById('camera-hole')
