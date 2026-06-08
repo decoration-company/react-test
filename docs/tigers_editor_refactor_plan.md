@@ -1,9 +1,24 @@
 # Tigers editor refactor plan
 
-作成日: 2026-05-16
-対象: `decocom_editor` の `/tigers` ルート（阪神タイガースコラボ専用エディタ）
-目的: Shopify iframe 埋め込み前提でモバイル単一レイアウトに統一し、編集セレクト領域の操作性を改善する
-ステータス: 調査メモ。コード変更は未着手。
+作成日: 2026-05-16  
+最終更新: 2026-06-08  
+対象: `decocom_editor` の `/tigers` ルート（阪神タイガースコラボ専用エディタ）  
+目的: Shopify iframe 埋め込み前提でモバイル単一レイアウトに統一し、編集セレクト領域の操作性を改善する  
+ステータス: **第一弾 UI 反映済み**（本 doc の未着手項目は残存）
+
+## 2026-06-08 反映済み（本 plan から派生した実装）
+
+| 項目 | 状態 |
+|------|------|
+| variant 連動（kisekae / hard-clear） | ✅ `resolveTigersItem()` |
+| 配置サムネ = 本番プレビュー同形 | ✅ `TigersDesignPreview` `mode="thumbnail"` |
+| 背景サムネ 1行 flex | ✅ |
+| STEP 2/3 プレビュー領域拡大 | ✅ |
+| パターンタイル共通化 | ✅ `tigersPattern.ts` |
+| hard-clear 筐体 CSS | ✅ ベージュ半透明 + 細枠（[s3_tigers_editor_first.md §3.1](../../../docs/specs/decocom_for_shopify/s3_tigers_editor_first.md)） |
+| 選択時カメラ穴の色固定 | ✅ 配置サムネ枠の bg を選択時も `#f0f0f0` |
+
+**未着手（plan 本文参照）:** print-spec 接続、commerce 保存 E2E、ギャラリー投稿 UI 等。
 
 ---
 
