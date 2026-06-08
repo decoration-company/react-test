@@ -617,7 +617,16 @@ body.tigers-editor-body * {
 }
 
 .tigers-design-preview--hard-clear .tigers-design-preview__case-base {
-  fill: rgba(255, 255, 255, 0.94);
+  fill: rgba(244, 243, 236, 0.6);
+  stroke: rgba(120, 120, 120, 0.55);
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
+}
+
+.tigers-design-preview--hard-clear .tigers-design-preview__case-shadow {
+  fill: rgba(244, 243, 236, 0.35);
+  stroke: transparent;
+  stroke-width: 0;
 }
 
 .tigers-design-preview__design-area {
