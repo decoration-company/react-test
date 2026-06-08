@@ -44,7 +44,7 @@ export type TigersDesign = {
   background: TigersBackground
 }
 
-export type TigersCaseKind = 'kisekae-face' | 'hard-clear'
+export type TigersCaseKind = 'kisekae-set' | 'hard-clear'
 
 export type TigersMockItem = {
   variant: string
@@ -57,4 +57,6 @@ export type TigersMockItem = {
   caseColor: string | null
   printWidth: number
   printHeight: number
+  /** commerce print-spec の base_image_url（あればプレビュー合成に使う）。 */
+  commerceBaseImageUrl?: string | null
 }

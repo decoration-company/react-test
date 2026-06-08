@@ -134,12 +134,12 @@ export const tigersLayouts: TigersLayout[] = [
 export const DEFAULT_TIGERS_VARIANT = 'google-pixel-9a-hard-case-clear'
 
 const TIGERS_ITEM_PROFILES: Record<TigersCaseKind, Omit<TigersMockItem, 'variant'>> = {
-  'kisekae-face': {
-    caseKind: 'kisekae-face',
+  'kisekae-set': {
+    caseKind: 'kisekae-set',
     modelName: 'iPhone 16 Pro',
-    materialName: '着せ替えフェイス',
+    materialName: '着せ替えスマホケース',
     colorName: 'ナチュラル',
-    price: 1540,
+    price: 3190,
     caseColor: null,
     printWidth: KISEKAE_PRINT_AREA_BOUNDS.width,
     printHeight: KISEKAE_PRINT_AREA_BOUNDS.height,
@@ -158,7 +158,7 @@ const TIGERS_ITEM_PROFILES: Record<TigersCaseKind, Omit<TigersMockItem, 'variant
 
 function detectTigersCaseKind(variant: string): TigersCaseKind | null {
   const normalized = variant.trim().toLowerCase()
-  if (normalized.includes('kisekae-case-face')) return 'kisekae-face'
+  if (normalized.includes('kisekae-case-set')) return 'kisekae-set'
   if (normalized.endsWith('-hard-case-clear')) return 'hard-clear'
   return null
 }

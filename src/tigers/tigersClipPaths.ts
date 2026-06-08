@@ -59,15 +59,20 @@ function designAreaFromBounds(bounds: {
   }
 }
 
-export function tigersClipProfile(caseKind: TigersCaseKind): TigersClipProfile {
-  if (caseKind === 'kisekae-face') {
+export function tigersClipProfile(
+  caseKind: TigersCaseKind,
+  options?: { commerceBaseImageUrl?: string | null },
+): TigersClipProfile {
+  if (caseKind === 'kisekae-set') {
     return {
       viewBox: KISEKAE_CLIP_VIEW_BOX,
       designArea: designAreaFromBounds(KISEKAE_PRINT_AREA_BOUNDS),
       outlinePathD: KISEKAE_BLEED_AREA_PATH_D,
       maskPathD: KISEKAE_PRINT_AREA_PATH_D,
       fillRule: 'nonzero',
-      baseImagePath: '/assets/iphone-16-pro/kisekae/iphone-16-pro-kisekae_base.png',
+      baseImagePath:
+        options?.commerceBaseImageUrl
+        ?? '/assets/iphone-16-pro/kisekae/iphone-16-pro-kisekae_base.png',
     }
   }
 
@@ -82,6 +87,6 @@ export function tigersClipProfile(caseKind: TigersCaseKind): TigersClipProfile {
     outlinePathD: PIXEL_9A_CASE_CLIP_PATH_D,
     maskPathD: PIXEL_9A_CASE_CLIP_PATH_D,
     fillRule: 'evenodd',
-    baseImagePath: null,
+    baseImagePath: options?.commerceBaseImageUrl ?? null,
   }
 }

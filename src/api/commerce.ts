@@ -18,6 +18,28 @@ export type SaveDesignResponse = {
   preview_image_url: string
 }
 
+export type PrintSpec = {
+  variant: string
+  device: {
+    code: string
+    name: string
+  }
+  product_type: {
+    code: string
+    name: string
+  }
+  print_spec: {
+    print_width: number
+    print_height: number
+    print_area_svg_url: string
+    base_image_url: string | null
+    safe_area_svg_url: string | null
+    bleed_area_svg_url: string | null
+    placement_canvas_width?: number | null
+    placement_canvas_height?: number | null
+  }
+}
+
 export type ProductRenderPlacement = {
   centerX: number
   centerY: number
@@ -89,6 +111,17 @@ export async function renderProductVariant(
   }
 
   return parseJsonResponse<RenderDesignResponse>(response)
+}
+
+export async function fetchPrintSpec(variant: string): Promise<PrintSpec> {
+  const url = `${commerceBaseUrl()}/api/products/${encodeURIComponent(variant)}/print-spec`
+  const response = await fetch(url)
+
+  if (response.status === 404) {
+    throw new Error(`${url} が 404 です。commerce に variant が未登録の可能性があります。`)
+  }
+
+  return parseJsonResponse<PrintSpec>(response)
 }
 
 export async function saveDesign(payload: {

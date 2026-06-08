@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { uploadImage, saveDesign } from '../api/commerce'
-import { svgElementToPngFile } from '../api/svgExport'
+import type { PrintSpec } from '../api/commerce'
 import {
-  resolveTigersItem,
   tigersLayouts,
   tigersStamps,
   tigersStampsOnSale,
   visibleTigersBackgrounds,
 } from './tigersData'
-import { serializeTigersDesign } from './tigersDesignSerialization'
 import { TigersDesignPreview } from './TigersDesignPreview'
+import { useTigersPrintSpec } from './tigersPrintSpec'
+import { saveTigersDesign } from './tigersSave'
 import type { TigersBackground, TigersLayout, TigersMockItem, TigersStamp, TigersStep } from './tigersTypes'
 import './TigersEditor.css'
 
@@ -257,18 +256,21 @@ function BackgroundSelection({
 
 function PreviewScreen({
   item,
+  printSpec,
   selectedStamps,
   selectedLayout,
   selectedBackground,
   onBack,
 }: {
   item: TigersMockItem
+  printSpec: PrintSpec | null
   selectedStamps: TigersStamp[]
   selectedLayout: TigersLayout
   selectedBackground: TigersBackground
   onBack: () => void
 }) {
-  const svgRef = useRef<SVGSVGElement | null>(null)
+  const mockupSvgRef = useRef<SVGSVGElement | null>(null)
+  const printSvgRef = useRef<SVGSVGElement | null>(null)
   const [postToGallery] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -276,39 +278,24 @@ function PreviewScreen({
   const shopifyEmbed = useMemo(() => isShopifyEmbed(), [])
 
   async function save() {
-    const svg = svgRef.current
-    if (!svg) return
+    const mockupSvg = mockupSvgRef.current
+    const printSvg = printSvgRef.current
+    if (!mockupSvg || !printSvg) return
 
     setIsSaving(true)
     setSaveError(null)
 
     try {
-      const file = await svgElementToPngFile(svg, 'tigers-design.png')
-      const uploaded = await uploadImage(file)
-
-      const designData = serializeTigersDesign({
-        layout: selectedLayout,
-        stamps: selectedStamps,
-        background: selectedBackground,
+      const message = await saveTigersDesign({
+        item,
+        printSpec,
+        mockupSvg,
+        printSvg,
+        selectedStamps,
+        selectedLayout,
+        selectedBackground,
+        postToGallery,
       })
-
-      const result = await saveDesign({
-        variant: item.variant,
-        composed_image_url: uploaded.source_image_url,
-        design_data: {
-          ...designData,
-          post_to_gallery: postToGallery,
-        },
-      })
-
-      const message = {
-        type: 'decocom:design:ready' as const,
-        variant: item.variant,
-        spec_id: result.design_id,
-        design_id: result.design_id,
-        preview_url: result.preview_image_url,
-        print_image_url: result.composed_image_url,
-      }
       window.parent.postMessage(message, parentOrigin)
 
       if (!shopifyEmbed) {
@@ -331,11 +318,22 @@ function PreviewScreen({
       <div className="tigers-preview-page__body">
         <div className="tigers-preview-page__mockup">
           <TigersDesignPreview
-            ref={svgRef}
+            ref={mockupSvgRef}
             selectedStamps={selectedStamps}
             selectedLayout={selectedLayout}
             selectedBackground={selectedBackground}
             selectedItem={item}
+            mode="mockup"
+          />
+        </div>
+        <div className="tigers-preview-page__print-export" aria-hidden="true">
+          <TigersDesignPreview
+            ref={printSvgRef}
+            selectedStamps={selectedStamps}
+            selectedLayout={selectedLayout}
+            selectedBackground={selectedBackground}
+            selectedItem={item}
+            mode="print"
           />
         </div>
         <div className="tigers-preview-card">
@@ -362,7 +360,7 @@ function PreviewScreen({
 }
 
 export function TigersEditor({ variant }: { variant: string | null }) {
-  const item = useMemo<TigersMockItem>(() => resolveTigersItem(variant), [variant])
+  const { item, printSpec, specLoading, specError } = useTigersPrintSpec(variant)
   const availableStamps = useMemo(() => tigersStampsOnSale(), [])
 
   const [currentStep, setCurrentStep] = useState<TigersStep>('stamp')
@@ -442,6 +440,7 @@ export function TigersEditor({ variant }: { variant: string | null }) {
     return (
       <PreviewScreen
         item={item}
+        printSpec={printSpec}
         selectedStamps={selectedStamps}
         selectedLayout={selectedLayout}
         selectedBackground={selectedBackground}
@@ -455,6 +454,14 @@ export function TigersEditor({ variant }: { variant: string | null }) {
 
   return (
     <section className={`tigers-editor ${stepClass}`}>
+      {specLoading ? (
+        <p className="tigers-editor__spec-status" role="status">商品情報を読み込み中...</p>
+      ) : null}
+      {specError ? (
+        <p className="tigers-editor__spec-status tigers-editor__spec-status--warn" role="status">
+          印刷仕様の取得に失敗しました（ローカル設定で続行）: {specError}
+        </p>
+      ) : null}
       <div className="tigers-editor__left">
         <header className="tigers-editor__header">
           <div className="tigers-editor__header-side">

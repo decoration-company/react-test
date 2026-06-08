@@ -109,7 +109,12 @@ export const TigersDesignPreview = forwardRef<SVGSVGElement, TigersDesignPreview
   mode = 'mockup',
 }, ref) {
   const uid = useId().replace(/:/g, '')
-  const clip = useMemo(() => tigersClipProfile(selectedItem.caseKind), [selectedItem.caseKind])
+  const clip = useMemo(
+    () => tigersClipProfile(selectedItem.caseKind, {
+      commerceBaseImageUrl: selectedItem.commerceBaseImageUrl,
+    }),
+    [selectedItem.caseKind, selectedItem.commerceBaseImageUrl],
+  )
 
   const activeStamps = selectedLayout ? selectedStamps.slice(0, selectedLayout.stampCount) : []
   const designWidth = clip.designArea.width

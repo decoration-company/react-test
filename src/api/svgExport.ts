@@ -31,9 +31,15 @@ async function inlineImages(svg: SVGElement): Promise<void> {
   )
 }
 
+export type SvgPngExportOptions = {
+  outputWidth?: number
+  outputHeight?: number
+}
+
 export async function svgElementToPngFile(
   svg: SVGSVGElement,
   filename: string,
+  options?: SvgPngExportOptions,
 ): Promise<File> {
   const clone = svg.cloneNode(true) as SVGSVGElement
   await inlineImages(clone)
@@ -51,8 +57,8 @@ export async function svgElementToPngFile(
   const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
   const url = URL.createObjectURL(svgBlob)
 
-  const pxWidth = Math.round(width * EXPORT_SCALE)
-  const pxHeight = Math.round(height * EXPORT_SCALE)
+  const pxWidth = Math.round(options?.outputWidth ?? width * EXPORT_SCALE)
+  const pxHeight = Math.round(options?.outputHeight ?? height * EXPORT_SCALE)
 
   const canvas = document.createElement('canvas')
   canvas.width = pxWidth

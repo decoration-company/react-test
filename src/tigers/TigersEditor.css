@@ -339,7 +339,7 @@ body.tigers-editor-body * {
   aspect-ratio: 207.87 / 441.93;
 }
 
-.tigers-layout-option__phone--kisekae-face {
+.tigers-layout-option__phone--kisekae-set {
   aspect-ratio: 640 / 940;
 }
 
@@ -575,7 +575,7 @@ body.tigers-editor-body * {
   aspect-ratio: 207.87 / 441.93;
 }
 
-.tigers-design-preview--kisekae-face .tigers-design-preview__case-svg {
+.tigers-design-preview--kisekae-set .tigers-design-preview__case-svg {
   aspect-ratio: 640 / 940;
 }
 
@@ -729,6 +729,27 @@ body.tigers-editor-body * {
   width: auto;
   max-width: 100%;
   max-height: 100%;
+}
+
+.tigers-preview-page__print-export {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tigers-editor__spec-status {
+  margin: 0;
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #666666;
+  background: #fff8e8;
+}
+
+.tigers-editor__spec-status--warn {
+  color: #8a5a00;
 }
 
 .tigers-preview-card {
