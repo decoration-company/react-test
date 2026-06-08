@@ -823,6 +823,27 @@ body.tigers-editor-body * {
   accent-color: #ffe100;
 }
 
+.tigers-access-denied {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: #111;
+  color: #fff;
+}
+
+.tigers-access-denied h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.tigers-access-denied p {
+  margin: 0;
+  color: #ccc;
+}
+
 @media (min-width: 768px) {
   body.tigers-editor-body {
     background: #f0f0f0;

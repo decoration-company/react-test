@@ -1,6 +1,8 @@
 import { Pixel9aCaseMaskPreview } from './pixel9a/Pixel9aCaseMaskPreview'
 import { GarupanEditor } from './garupan/GarupanEditor'
 import { RenderTestPage } from './test/RenderTestPage'
+import { assessTigersEmbedAccess } from './tigers/tigersAccess'
+import { TigersAccessDenied } from './tigers/TigersAccessDenied'
 import { TigersEditor } from './tigers/TigersEditor'
 import { VerifyPreview } from './verify/VerifyPreview'
 import { KisekaePreview } from './kisekae/KisekaePreview'
@@ -38,6 +40,10 @@ function App() {
   }
 
   if (path === '/tigers') {
+    const access = assessTigersEmbedAccess()
+    if (!access.allowed) {
+      return <TigersAccessDenied reason={access.reason} />
+    }
     return <TigersEditor variant={variant} />
   }
 

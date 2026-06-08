@@ -49,6 +49,8 @@ export type ProductRenderPlacement = {
   rotationRad: number
 }
 
+export type CommerceRequestHeaders = Record<string, string>
+
 function commerceBaseUrl(): string {
   const baseUrl = import.meta.env.VITE_COMMERCE_API_BASE_URL
   if (!baseUrl) {
@@ -66,12 +68,16 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
   return body as T
 }
 
-export async function uploadImage(file: File): Promise<UploadImageResponse> {
+export async function uploadImage(
+  file: File,
+  extraHeaders?: CommerceRequestHeaders,
+): Promise<UploadImageResponse> {
   const formData = new FormData()
   formData.append('file', file)
 
   const response = await fetch(`${commerceBaseUrl()}/api/upload`, {
     method: 'POST',
+    headers: extraHeaders,
     body: formData,
   })
 
@@ -96,12 +102,14 @@ export async function renderProductVariant(
     source_image_url: string
     placement: ProductRenderPlacement
   },
+  extraHeaders?: CommerceRequestHeaders,
 ): Promise<RenderDesignResponse> {
   const url = `${commerceBaseUrl()}/api/products/${encodeURIComponent(variant)}/render`
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...extraHeaders,
     },
     body: JSON.stringify(payload),
   })
@@ -124,15 +132,19 @@ export async function fetchPrintSpec(variant: string): Promise<PrintSpec> {
   return parseJsonResponse<PrintSpec>(response)
 }
 
-export async function saveDesign(payload: {
-  variant: string
-  composed_image_url: string
-  design_data: unknown
-}): Promise<SaveDesignResponse> {
+export async function saveDesign(
+  payload: {
+    variant: string
+    composed_image_url: string
+    design_data: unknown
+  },
+  extraHeaders?: CommerceRequestHeaders,
+): Promise<SaveDesignResponse> {
   const response = await fetch(`${commerceBaseUrl()}/api/designs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...extraHeaders,
     },
     body: JSON.stringify(payload),
   })

@@ -5,6 +5,7 @@ import {
   type PrintSpec,
   type ProductRenderPlacement,
 } from '../api/commerce'
+import { tigersCommerceHeaders } from './tigersAccess'
 import { svgElementToPngFile } from '../api/svgExport'
 import { serializeTigersDesign } from './tigersDesignSerialization'
 import type { TigersBackground, TigersLayout, TigersMockItem, TigersStamp } from './tigersTypes'
@@ -78,9 +79,11 @@ export async function saveTigersDesign({
     svgElementToPngFile(printSvg, 'tigers-print.png', printExportSize),
   ])
 
+  const commerceHeaders = tigersCommerceHeaders()
+
   const [mockupUpload, printUpload] = await Promise.all([
-    uploadImage(mockupFile),
-    uploadImage(printFile),
+    uploadImage(mockupFile, commerceHeaders),
+    uploadImage(printFile, commerceHeaders),
   ])
 
   let composedImageUrl = printUpload.source_image_url
@@ -89,10 +92,14 @@ export async function saveTigersDesign({
   try {
     const canvas = renderCanvasSize(item, printSpec)
     const natural = await readNaturalSize(printUpload.source_image_url)
-    const rendered = await renderProductVariant(item.variant, {
-      source_image_url: printUpload.source_image_url,
-      placement: coverPlacement(natural, canvas),
-    })
+    const rendered = await renderProductVariant(
+      item.variant,
+      {
+        source_image_url: printUpload.source_image_url,
+        placement: coverPlacement(natural, canvas),
+      },
+      commerceHeaders,
+    )
     composedImageUrl = rendered.composed_image_url
   } catch {
     // commerce render 未対応 variant はクライアント書き出し PNG をそのまま使う
@@ -104,14 +111,17 @@ export async function saveTigersDesign({
     background: selectedBackground,
   })
 
-  const result = await saveDesign({
-    variant: item.variant,
-    composed_image_url: composedImageUrl,
-    design_data: {
-      ...designData,
-      post_to_gallery: postToGallery,
+  const result = await saveDesign(
+    {
+      variant: item.variant,
+      composed_image_url: composedImageUrl,
+      design_data: {
+        ...designData,
+        post_to_gallery: postToGallery,
+      },
     },
-  })
+    commerceHeaders,
+  )
 
   return {
     type: 'decocom:design:ready',
