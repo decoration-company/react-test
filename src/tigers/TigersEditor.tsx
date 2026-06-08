@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { uploadImage, saveDesign } from '../api/commerce'
 import { svgElementToPngFile } from '../api/svgExport'
 import {
-  mockTigersItem,
+  resolveTigersItem,
   tigersLayouts,
   tigersStamps,
   tigersStampsOnSale,
@@ -388,10 +388,7 @@ function PreviewScreen({
 }
 
 export function TigersEditor({ variant }: { variant: string | null }) {
-  const item = useMemo<TigersMockItem>(() => ({
-    ...mockTigersItem,
-    variant: variant?.trim() || mockTigersItem.variant,
-  }), [variant])
+  const item = useMemo<TigersMockItem>(() => resolveTigersItem(variant), [variant])
   const availableStamps = useMemo(() => tigersStampsOnSale(), [])
 
   const [currentStep, setCurrentStep] = useState<TigersStep>('stamp')

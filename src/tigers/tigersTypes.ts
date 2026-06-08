@@ -44,13 +44,17 @@ export type TigersDesign = {
   background: TigersBackground
 }
 
+export type TigersCaseKind = 'kisekae-face' | 'hard-clear'
+
 export type TigersMockItem = {
   variant: string
+  caseKind: TigersCaseKind
   modelName: string
   materialName: string
   colorName: string
   price: number
-  caseColor: string
+  /** ケース下地色。透明 SKU・着せ替えフェイスは null（塗りなし）。 */
+  caseColor: string | null
   printWidth: number
   printHeight: number
 }

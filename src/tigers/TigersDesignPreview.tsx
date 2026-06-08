@@ -1,6 +1,6 @@
-import { forwardRef } from 'react'
-import { PIXEL_9A_CASE_CLIP_PATH_D } from '../pixel9a/constants'
+import { forwardRef, useId, useMemo } from 'react'
 import type { TigersBackground, TigersLayout, TigersMockItem, TigersStamp } from './tigersTypes'
+import { tigersClipProfile } from './tigersClipPaths'
 
 type TigersDesignPreviewProps = {
   selectedStamps: TigersStamp[]
@@ -97,57 +97,91 @@ export const TigersDesignPreview = forwardRef<SVGSVGElement, TigersDesignPreview
   selectedItem,
   mode = 'mockup',
 }, ref) {
+  const uid = useId().replace(/:/g, '')
+  const clip = useMemo(() => tigersClipProfile(selectedItem.caseKind), [selectedItem.caseKind])
+
   const activeStamps = selectedLayout ? selectedStamps.slice(0, selectedLayout.stampCount) : []
-  const designWidth = selectedItem.printWidth
-  const designHeight = selectedItem.printHeight
+  const designWidth = clip.viewBox.width
+  const designHeight = clip.viewBox.height
   const viewBox = `0 0 ${designWidth} ${designHeight}`
-  const maskId = 'tigers-pixel9a-mask'
-  const shadowId = 'tigers-pixel9a-shadow'
+  const maskId = `tigers-mask-${uid}`
+  const shadowId = `tigers-shadow-${uid}`
+  const showBaseImage = mode === 'mockup' && clip.baseImagePath !== null
 
   return (
-    <div className={`tigers-design-preview tigers-design-preview--${mode}`}>
+    <div className={`tigers-design-preview tigers-design-preview--${selectedItem.caseKind} tigers-design-preview--${mode}`}>
       <svg
         ref={ref}
-        className="tigers-design-preview__pixel9a-svg"
+        className="tigers-design-preview__case-svg"
         viewBox={viewBox}
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={`${selectedItem.modelName} ${selectedItem.materialName} プレビュー`}
       >
         <defs>
-          <filter
-            id={shadowId}
-            x="-40"
-            y="-40"
-            width={designWidth + 80}
-            height={designHeight + 100}
-            filterUnits="userSpaceOnUse"
-            colorInterpolationFilters="sRGB"
-          >
-            <feDropShadow dx="-2" dy="-2" stdDeviation="6" floodColor="#000000" floodOpacity="0.06" />
-            <feDropShadow dx="3" dy="6" stdDeviation="4" floodColor="#000000" floodOpacity="0.18" />
-            <feDropShadow dx="0" dy="8" stdDeviation="5" floodColor="#000000" floodOpacity="0.10" />
-            <feDropShadow dx="2" dy="3" stdDeviation="1.5" floodColor="#000000" floodOpacity="0.15" />
-          </filter>
+          {mode === 'mockup' ? (
+            <filter
+              id={shadowId}
+              x="-40"
+              y="-40"
+              width={designWidth + 80}
+              height={designHeight + 100}
+              filterUnits="userSpaceOnUse"
+              colorInterpolationFilters="sRGB"
+            >
+              <feDropShadow dx="-2" dy="-2" stdDeviation="6" floodColor="#000000" floodOpacity="0.06" />
+              <feDropShadow dx="3" dy="6" stdDeviation="4" floodColor="#000000" floodOpacity="0.18" />
+              <feDropShadow dx="0" dy="8" stdDeviation="5" floodColor="#000000" floodOpacity="0.10" />
+              <feDropShadow dx="2" dy="3" stdDeviation="1.5" floodColor="#000000" floodOpacity="0.15" />
+            </filter>
+          ) : null}
           <mask id={maskId} maskUnits="userSpaceOnUse">
             <rect x="0" y="0" width={designWidth} height={designHeight} fill="#000000" />
-            <path d={PIXEL_9A_CASE_CLIP_PATH_D} fill="#ffffff" fillRule="evenodd" />
+            <path d={clip.maskPathD} fill="#ffffff" fillRule={clip.fillRule} />
           </mask>
         </defs>
+
+        {mode === 'mockup' ? (
+          <rect
+            className="tigers-design-preview__canvas-bg"
+            x="0"
+            y="0"
+            width={designWidth}
+            height={designHeight}
+          />
+        ) : null}
+
         {mode === 'mockup' ? (
           <path
-            className="tigers-design-preview__pixel9a-shadow"
-            d={PIXEL_9A_CASE_CLIP_PATH_D}
-            fillRule="evenodd"
+            className="tigers-design-preview__case-shadow"
+            d={clip.outlinePathD}
+            fillRule={clip.fillRule}
             filter={`url(#${shadowId})`}
           />
         ) : null}
-        <path
-          className="tigers-design-preview__pixel9a-base"
-          d={PIXEL_9A_CASE_CLIP_PATH_D}
-          fillRule="evenodd"
-        />
+
+        {showBaseImage && clip.baseImagePath ? (
+          <image
+            className="tigers-design-preview__base-image"
+            href={clip.baseImagePath}
+            x="0"
+            y="0"
+            width={designWidth}
+            height={designHeight}
+            preserveAspectRatio="xMidYMid meet"
+          />
+        ) : mode === 'mockup' ? (
+          <path
+            className="tigers-design-preview__case-base"
+            d={clip.outlinePathD}
+            fillRule={clip.fillRule}
+          />
+        ) : null}
+
         <g mask={`url(#${maskId})`}>
-          <rect width={designWidth} height={designHeight} fill={selectedItem.caseColor} />
+          {selectedItem.caseColor ? (
+            <rect width={designWidth} height={designHeight} fill={selectedItem.caseColor} />
+          ) : null}
           {selectedBackground?.imagePath ? (
             <image
               href={selectedBackground.imagePath}
@@ -180,11 +214,7 @@ export const TigersDesignPreview = forwardRef<SVGSVGElement, TigersDesignPreview
             })
           )}
         </g>
-        <path
-          className="tigers-design-preview__pixel9a-outline"
-          d={PIXEL_9A_CASE_CLIP_PATH_D}
-          fillRule="evenodd"
-        />
+
       </svg>
     </div>
   )

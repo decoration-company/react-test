@@ -548,43 +548,50 @@ body.tigers-editor-body * {
   padding: 18px;
 }
 
-.tigers-design-preview__pixel9a-svg {
+.tigers-design-preview__case-svg {
   display: block;
   width: auto;
   max-width: 100%;
   max-height: 100%;
-  aspect-ratio: 207.87 / 441.93;
   overflow: visible;
 }
 
-.tigers-design-preview--print .tigers-design-preview__pixel9a-svg {
+.tigers-design-preview--hard-clear .tigers-design-preview__case-svg {
+  aspect-ratio: 207.87 / 441.93;
+}
+
+.tigers-design-preview--kisekae-face .tigers-design-preview__case-svg {
+  aspect-ratio: 640 / 940;
+}
+
+.tigers-design-preview--print .tigers-design-preview__case-svg {
   filter: none;
 }
 
-.tigers-preview-area .tigers-design-preview__pixel9a-svg {
+.tigers-preview-area .tigers-design-preview__case-svg {
   height: clamp(160px, 20svh, 210px);
 }
 
-.tigers-design-preview__pixel9a-shadow {
+.tigers-design-preview__canvas-bg {
+  fill: #f7f8fa;
+}
+
+.tigers-design-preview__case-shadow {
   fill: #ffffff;
   stroke: transparent;
   stroke-width: 0;
   vector-effect: non-scaling-stroke;
 }
 
-.tigers-design-preview__pixel9a-base {
+.tigers-design-preview__case-base {
   fill: #ffffff;
   stroke: transparent;
   stroke-width: 0;
   vector-effect: non-scaling-stroke;
 }
 
-.tigers-design-preview__pixel9a-outline {
-  fill: none;
-  stroke: #333333;
-  stroke-linejoin: round;
-  stroke-width: 2.4;
-  vector-effect: non-scaling-stroke;
+.tigers-design-preview--hard-clear .tigers-design-preview__case-base {
+  fill: rgba(255, 255, 255, 0.94);
 }
 
 .tigers-design-preview__design-area {
@@ -675,11 +682,17 @@ body.tigers-editor-body * {
 }
 
 .tigers-preview-page__mockup .tigers-design-preview {
-  padding: 24px;
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  padding: 16px 24px;
 }
 
-.tigers-preview-page__mockup .tigers-design-preview__pixel9a-svg {
+.tigers-preview-page__mockup .tigers-design-preview__case-svg {
+  display: block;
   height: 100%;
+  width: auto;
+  max-width: 100%;
   max-height: 100%;
 }
 

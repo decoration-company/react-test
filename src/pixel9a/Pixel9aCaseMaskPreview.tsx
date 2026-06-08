@@ -21,6 +21,7 @@ import {
   PIXEL_9A_CASE_CLIP_PATH_BOUNDS,
   PIXEL_9A_CASE_CLIP_PATH_D,
 } from './constants'
+import { parseHardCaseColorFromVariant, type HardCaseColor } from '../lib/hardCaseColor'
 import { createRenderPayload } from './transform'
 import './Pixel9aCaseMaskPreview.css'
 
@@ -175,6 +176,98 @@ function createCoverTransform(
 
 function isLegacyPixel9aVariant(variant: string | null): boolean {
   return LEGACY_PIXEL_9A_VARIANTS.has((variant ?? '').toLowerCase())
+}
+
+function resolveHardCaseColor(variant: string | null): HardCaseColor {
+  return parseHardCaseColorFromVariant(variant) ?? 'white'
+}
+
+function hardCaseShapeStyles(
+  caseColor: HardCaseColor,
+  edgeGradientId: string,
+  glassGradientId: string,
+): string {
+  const shared = `
+    .editor-shape-shadow, .editor-shape-material, .editor-shape-bevel, .editor-shape-glass, .editor-shape-outline { pointer-events: none; }
+    .editor-shape-bevel * { fill: none; stroke: rgba(255, 255, 255, 0.01); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
+    .editor-shape-glass * { fill: url(#${glassGradientId}); stroke: transparent; stroke-width: 0; mix-blend-mode: screen; }
+    .editor-shape-outline * { fill: none; stroke-width: 0.9; vector-effect: non-scaling-stroke; }
+  `
+
+  if (caseColor === 'clear') {
+    return `${shared}
+      .editor-shape-shadow * { fill: rgba(255, 255, 255, 0.35); stroke: transparent; stroke-width: 0; }
+      .editor-shape-material * { fill: url(#${edgeGradientId}); stroke: rgba(255, 255, 255, 0.42); stroke-width: 0.75; vector-effect: non-scaling-stroke; }
+      .editor-shape-outline * { stroke: rgba(17, 24, 39, 0.34); }
+    `
+  }
+
+  if (caseColor === 'black') {
+    return `${shared}
+      .editor-shape-shadow * { fill: #111827; stroke: transparent; stroke-width: 0; }
+      .editor-shape-material * { fill: url(#${edgeGradientId}); stroke: rgba(255, 255, 255, 0.18); stroke-width: 0.9; vector-effect: non-scaling-stroke; }
+      .editor-shape-bg * { fill: rgba(17, 24, 39, 0.94); stroke: transparent; stroke-width: 0; vector-effect: non-scaling-stroke; }
+      .editor-shape-outline * { stroke: rgba(255, 255, 255, 0.22); }
+    `
+  }
+
+  return `${shared}
+    .editor-shape-shadow * { fill: #ffffff; stroke: transparent; stroke-width: 0; }
+    .editor-shape-material * { fill: url(#${edgeGradientId}); stroke: rgba(255, 255, 255, 0.78); stroke-width: 0.9; vector-effect: non-scaling-stroke; }
+    .editor-shape-bg * { fill: rgba(255, 255, 255, 0.92); stroke: transparent; stroke-width: 0; vector-effect: non-scaling-stroke; }
+    .editor-shape-outline * { stroke: rgba(17, 24, 39, 0.42); }
+  `
+}
+
+function hardCaseEdgeGradientStops(caseColor: HardCaseColor): string {
+  if (caseColor === 'clear') {
+    return `
+      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.22" />
+      <stop offset="38%" stopColor="#ffffff" stopOpacity="0.04" />
+      <stop offset="68%" stopColor="#e5e7eb" stopOpacity="0.12" />
+      <stop offset="100%" stopColor="#111827" stopOpacity="0.14" />
+    `
+  }
+  if (caseColor === 'black') {
+    return `
+      <stop offset="0%" stopColor="#374151" stopOpacity="0.98" />
+      <stop offset="42%" stopColor="#111827" stopOpacity="0.94" />
+      <stop offset="72%" stopColor="#030712" stopOpacity="0.88" />
+      <stop offset="100%" stopColor="#000000" stopOpacity="0.72" />
+    `
+  }
+  return `
+    <stop offset="0%" stopColor="#ffffff" stopOpacity="0.98" />
+    <stop offset="42%" stopColor="#f8fafc" stopOpacity="0.9" />
+    <stop offset="72%" stopColor="#e5e7eb" stopOpacity="0.72" />
+    <stop offset="100%" stopColor="#111827" stopOpacity="0.16" />
+  `
+}
+
+function hardCaseGlassGradientStops(caseColor: HardCaseColor): string {
+  if (caseColor === 'clear') {
+    return `
+      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.62" />
+      <stop offset="24%" stopColor="#ffffff" stopOpacity="0.12" />
+      <stop offset="46%" stopColor="#ffffff" stopOpacity="0.38" />
+      <stop offset="64%" stopColor="#ffffff" stopOpacity="0.08" />
+      <stop offset="100%" stopColor="#ffffff" stopOpacity="0.28" />
+    `
+  }
+  if (caseColor === 'black') {
+    return `
+      <stop offset="0%" stopColor="#ffffff" stopOpacity="0.16" />
+      <stop offset="30%" stopColor="#ffffff" stopOpacity="0.03" />
+      <stop offset="100%" stopColor="#ffffff" stopOpacity="0.08" />
+    `
+  }
+  return `
+    <stop offset="0%" stopColor="#ffffff" stopOpacity="0.48" />
+    <stop offset="26%" stopColor="#ffffff" stopOpacity="0.08" />
+    <stop offset="43%" stopColor="#ffffff" stopOpacity="0.32" />
+    <stop offset="62%" stopColor="#ffffff" stopOpacity="0.05" />
+    <stop offset="100%" stopColor="#ffffff" stopOpacity="0.20" />
+  `
 }
 
 export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) {
@@ -466,6 +559,13 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
 
   // ── Derived values ───────────────────────────────────────────────
 
+  const caseColor = resolveHardCaseColor(variant)
+  const showCaseBackground = caseColor !== 'clear'
+  const stageClassName =
+    caseColor === 'clear'
+      ? 'pixel9a-case-mask__stage pixel9a-case-mask__stage--clear'
+      : 'pixel9a-case-mask__stage'
+
   const viewBoxAttr = canvasSize ? `0 0 ${canvasSize.width} ${canvasSize.height}` : undefined
   const transformAttr = transform
     ? `translate(${transform.centerX} ${transform.centerY}) rotate(${radToDeg(transform.rotationRad)}) scale(${transform.scale})`
@@ -559,11 +659,11 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
         </div>
       ) : null}
 
-      <div className="pixel9a-case-mask__stage">
+      <div className={stageClassName}>
         {printAreaShape && canvasSize && viewBoxAttr ? (
           <svg
             ref={svgRef}
-            className="pixel9a-case-mask__svg"
+            className={`pixel9a-case-mask__svg${caseColor === 'clear' ? ' pixel9a-case-mask__svg--clear' : ''}`}
             viewBox={viewBoxAttr}
             preserveAspectRatio="xMidYMid meet"
             onPointerDown={onPointerDown}
@@ -572,28 +672,13 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
             onPointerCancel={onPointerEnd}
             onWheel={onWheel}
           >
-            <style>{`
-              .editor-shape-shadow, .editor-shape-material, .editor-shape-bevel, .editor-shape-glass, .editor-shape-outline { pointer-events: none; }
-              .editor-shape-shadow * { fill: #ffffff; stroke: transparent; stroke-width: 0; }
-              .editor-shape-material * { fill: url(#${edgeGradientId}); stroke: rgba(255, 255, 255, 0.78); stroke-width: 0.9; vector-effect: non-scaling-stroke; }
-              .editor-shape-bg * { fill: rgba(255, 255, 255, 0.92); stroke: transparent; stroke-width: 0; vector-effect: non-scaling-stroke; }
-              .editor-shape-bevel * { fill: none; stroke: rgba(255, 255, 255, 0.01); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
-              .editor-shape-glass * { fill: url(#${glassGradientId}); stroke: transparent; stroke-width: 0; mix-blend-mode: screen; }
-              .editor-shape-outline * { fill: none; stroke: rgba(17, 24, 39, 0.42); stroke-width: 0.9; vector-effect: non-scaling-stroke; }
-            `}</style>
+            <style>{hardCaseShapeStyles(caseColor, edgeGradientId, glassGradientId)}</style>
             <defs>
               <linearGradient id={edgeGradientId} x1="0" y1="0" x2={canvasSize.width} y2={canvasSize.height} gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.98" />
-                <stop offset="42%" stopColor="#f8fafc" stopOpacity="0.9" />
-                <stop offset="72%" stopColor="#e5e7eb" stopOpacity="0.72" />
-                <stop offset="100%" stopColor="#111827" stopOpacity="0.16" />
+                {hardCaseEdgeGradientStops(caseColor)}
               </linearGradient>
               <linearGradient id={glassGradientId} x1={canvasSize.width * 0.12} y1={canvasSize.height * 0.02} x2={canvasSize.width * 0.88} y2={canvasSize.height * 0.98} gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#ffffff" stopOpacity="0.48" />
-                <stop offset="26%" stopColor="#ffffff" stopOpacity="0.08" />
-                <stop offset="43%" stopColor="#ffffff" stopOpacity="0.32" />
-                <stop offset="62%" stopColor="#ffffff" stopOpacity="0.05" />
-                <stop offset="100%" stopColor="#ffffff" stopOpacity="0.20" />
+                {hardCaseGlassGradientStops(caseColor)}
               </linearGradient>
               <filter
                 id={innerBevelId}
@@ -633,11 +718,12 @@ export function Pixel9aCaseMaskPreview({ variant }: { variant: string | null }) 
               className="editor-shape-material"
               dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
             />
-            {/* ケース形状の白背景 */}
-            <g
-              className="editor-shape-bg"
-              dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
-            />
+            {showCaseBackground ? (
+              <g
+                className="editor-shape-bg"
+                dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
+              />
+            ) : null}
             {/* ユーザー画像（ケース形状でクリップ） */}
             {imageUrl && transform && transformAttr ? (
               <g clipPath={`url(#${clipId})`}>

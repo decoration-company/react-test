@@ -1,11 +1,13 @@
 import type {
   TigersBackground,
   TigersBackgroundSurface,
+  TigersCaseKind,
   TigersLayout,
   TigersMockItem,
   TigersStamp,
 } from './tigersTypes'
 import { PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX } from '../pixel9a/constants'
+import { KISEKAE_CLIP_VIEW_BOX } from './tigersClipPaths'
 
 const ASSET_BASE = '/assets/tigers'
 
@@ -128,13 +130,48 @@ export const tigersLayouts: TigersLayout[] = [
   },
 ]
 
-export const mockTigersItem: TigersMockItem = {
-  variant: 'pixel-9a',
-  modelName: 'Google Pixel 9a',
-  materialName: 'ハードケース',
-  colorName: 'ホワイト',
-  price: 2980,
-  caseColor: '#ffffff',
-  printWidth: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.width,
-  printHeight: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.height,
+/** editor 検証用のデフォルト variant（Android 透明）。 */
+export const DEFAULT_TIGERS_VARIANT = 'google-pixel-9a-hard-case-clear'
+
+const TIGERS_ITEM_PROFILES: Record<TigersCaseKind, Omit<TigersMockItem, 'variant'>> = {
+  'kisekae-face': {
+    caseKind: 'kisekae-face',
+    modelName: 'iPhone 16 Pro',
+    materialName: '着せ替えフェイス',
+    colorName: 'ナチュラル',
+    price: 1540,
+    caseColor: null,
+    printWidth: KISEKAE_CLIP_VIEW_BOX.width,
+    printHeight: KISEKAE_CLIP_VIEW_BOX.height,
+  },
+  'hard-clear': {
+    caseKind: 'hard-clear',
+    modelName: 'Google Pixel 9a',
+    materialName: 'ハードケース',
+    colorName: '透明',
+    price: 2750,
+    caseColor: null,
+    printWidth: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.width,
+    printHeight: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.height,
+  },
 }
+
+function detectTigersCaseKind(variant: string): TigersCaseKind | null {
+  const normalized = variant.trim().toLowerCase()
+  if (normalized.includes('kisekae-case-face')) return 'kisekae-face'
+  if (normalized.endsWith('-hard-case-clear')) return 'hard-clear'
+  return null
+}
+
+/** URL `variant` から商品プロファイルを解決する。未対応 variant は Android 透明にフォールバック。 */
+export function resolveTigersItem(variant: string | null | undefined): TigersMockItem {
+  const normalized = variant?.trim() || DEFAULT_TIGERS_VARIANT
+  const caseKind = detectTigersCaseKind(normalized) ?? 'hard-clear'
+  return {
+    ...TIGERS_ITEM_PROFILES[caseKind],
+    variant: normalized,
+  }
+}
+
+/** @deprecated resolveTigersItem を使うこと。 */
+export const mockTigersItem: TigersMockItem = resolveTigersItem(DEFAULT_TIGERS_VARIANT)

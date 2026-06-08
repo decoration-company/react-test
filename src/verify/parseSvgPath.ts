@@ -48,6 +48,8 @@ const DIARY_GUIDE_LAYER_SPECS: ReadonlyArray<{ id: string; role: DiaryGuideLayer
   { id: 'belt-right-stitch', role: 'stitch' },
 ]
 
+import { resolveRemoteAssetUrl } from '../lib/resolveRemoteAssetUrl'
+
 const SVG_LOG_PREFIX = '[verify-svg]'
 
 function logSvg(message: string, data?: unknown): void {
@@ -143,7 +145,7 @@ export function parseSvgPath(svgText: string): SvgPathResult {
 }
 
 export async function fetchAndParseSvgPath(url: string): Promise<SvgPathResult> {
-  const response = await fetch(url)
+  const response = await fetch(resolveRemoteAssetUrl(url))
   if (!response.ok) {
     throw new Error(`SVG 取得失敗: HTTP ${response.status}`)
   }
@@ -486,7 +488,7 @@ export function parseDiaryCaseClipSvg(svgText: string): DiaryCaseClipParts {
 }
 
 export async function fetchAndParseDiaryCaseClip(url: string): Promise<DiaryCaseClipParts> {
-  const response = await fetch(url)
+  const response = await fetch(resolveRemoteAssetUrl(url))
   if (!response.ok) {
     throw new Error(`SVG 取得失敗: HTTP ${response.status}`)
   }
@@ -494,8 +496,9 @@ export async function fetchAndParseDiaryCaseClip(url: string): Promise<DiaryCase
 }
 
 export async function fetchAndParseGripCaseClip(url: string): Promise<GripCaseClipParts> {
-  logSvg('fetchAndParseGripCaseClip:start', { url })
-  const response = await fetch(url)
+  const fetchUrl = resolveRemoteAssetUrl(url)
+  logSvg('fetchAndParseGripCaseClip:start', { url, fetchUrl })
+  const response = await fetch(fetchUrl)
   logSvg('fetchAndParseGripCaseClip:response', {
     url,
     ok: response.ok,

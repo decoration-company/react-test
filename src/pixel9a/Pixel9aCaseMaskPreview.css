@@ -125,6 +125,17 @@
   aspect-ratio: 207.87 / 441.93;
 }
 
+.pixel9a-case-mask__stage--clear {
+  background: transparent;
+}
+
+.pixel9a-case-mask__svg--clear {
+  filter:
+    drop-shadow(-1px -1px 8px rgb(0 0 0 / 4%))
+    drop-shadow(2px 4px 6px rgb(0 0 0 / 12%))
+    drop-shadow(0 6px 8px rgb(0 0 0 / 8%));
+}
+
 .pixel9a-case-mask__svg {
   display: block;
   width: 100%;

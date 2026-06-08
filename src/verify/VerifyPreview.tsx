@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import { fetchPrintSpec, type PrintSpec } from './fetchPrintSpec'
+import { parseHardCaseColorFromVariant } from '../lib/hardCaseColor'
 import {
   fetchAndParseDiaryCaseClip,
   fetchAndParseGripCaseClip,
@@ -764,6 +765,8 @@ export function VerifyPreview({
 
   const baseImageUrl = activeBaseImageUrl
   const isDiaryCase = spec?.product_type.code === 'diary-case'
+  const hardCaseColor = parseHardCaseColorFromVariant(variant)
+  const isClearHardCase = !isDiaryCase && hardCaseColor === 'clear'
   const clipSize = printAreaShape?.viewBox
   const canvasSize = clipSize ? resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize) : null
 
@@ -1063,10 +1066,10 @@ export function VerifyPreview({
         >
           <div
             style={{
-              border: '1px solid #ddd',
+              border: isClearHardCase ? 'none' : '1px solid #ddd',
               borderRadius: 8,
               overflow: embedLayout ? 'visible' : 'hidden',
-              background: '#f0f0f0',
+              background: isClearHardCase ? 'transparent' : '#f0f0f0',
               width: embedLayout ? '100%' : undefined,
               flex: embedLayout ? 1 : undefined,
               minHeight: embedLayout ? 0 : undefined,
@@ -1144,8 +1147,8 @@ export function VerifyPreview({
             <style>
               {`
                 .verify-preview__part--paper * {
-                  fill: #fff !important;
-                  stroke: #d1d5db !important;
+                  fill: ${isClearHardCase ? 'transparent' : '#fff'} !important;
+                  stroke: ${isClearHardCase ? 'rgba(17, 24, 39, 0.28)' : '#d1d5db'} !important;
                   stroke-width: 0.5 !important;
                   vector-effect: non-scaling-stroke;
                 }
