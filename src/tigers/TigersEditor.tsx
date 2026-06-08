@@ -177,6 +177,10 @@ function LayoutSelection({
   const activeSlotIndex = activeSlot % slotCount
   const showAdditionalStamps = slotCount > 1
 
+  useEffect(() => {
+    setActiveSlot(selectedLayout?.id === 'double' ? 1 : 0)
+  }, [selectedLayout?.id])
+
   return (
     <div className="tigers-layout-selection">
       <div className="tigers-layout-options">
@@ -291,7 +295,7 @@ function PreviewScreen({
   onBack: () => void
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const [postToGallery, setPostToGallery] = useState(true)
+  const [postToGallery] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const parentOrigin = useMemo(() => embeddedParentOrigin(), [])
@@ -372,22 +376,9 @@ function PreviewScreen({
             <span aria-hidden="true">!</span>
             <p>{saveError}</p>
           </div>
-        ) : (
-          <div className="tigers-preview-note">
-            <span aria-hidden="true">i</span>
-            <p>このデザインはカートに入れる際に自動でマイデザインへ保存されます。</p>
-          </div>
-        )}
+        ) : null}
       </div>
       <footer className="tigers-preview-page__footer">
-        <label className="tigers-gallery-check">
-          <input
-            type="checkbox"
-            checked={postToGallery}
-            onChange={event => setPostToGallery(event.target.checked)}
-          />
-          <span>ギャラリーへ投稿する</span>
-        </label>
         <button type="button" className="tigers-primary-button" onClick={save} disabled={isSaving}>
           {isSaving ? '保存中...' : 'カートに入れる'}
         </button>
@@ -404,7 +395,10 @@ export function TigersEditor({ variant }: { variant: string | null }) {
   const availableStamps = useMemo(() => tigersStampsOnSale(), [])
 
   const [currentStep, setCurrentStep] = useState<TigersStep>('stamp')
-  const [selectedStamps, setSelectedStamps] = useState<TigersStamp[]>([])
+  const [selectedStamps, setSelectedStamps] = useState<TigersStamp[]>(() => {
+    const firstStamp = tigersStampsOnSale()[0]
+    return firstStamp ? [firstStamp] : []
+  })
   const [selectedLayout, setSelectedLayout] = useState<TigersLayout>(tigersLayouts[0])
   const [selectedBackground, setSelectedBackground] = useState<TigersBackground>(visibleTigersBackgrounds[0])
 
@@ -422,6 +416,15 @@ export function TigersEditor({ variant }: { variant: string | null }) {
       const next = [...prev]
       next[index] = stamp
       return next
+    })
+  }
+
+  function selectLayout(layout: TigersLayout) {
+    setSelectedLayout(layout)
+    setSelectedStamps(prev => {
+      const fallback = prev[0] ?? availableStamps[0]
+      if (!fallback) return prev
+      return Array.from({ length: layout.stampCount }, (_, index) => prev[index] ?? fallback)
     })
   }
 
@@ -477,10 +480,10 @@ export function TigersEditor({ variant }: { variant: string | null }) {
   }
 
   const text = stepTexts(currentStep)
-  const isStepSelectStamp = currentStep === 'stamp'
+  const stepClass = `is-step-${currentStep}`
 
   return (
-    <section className={`tigers-editor ${isStepSelectStamp ? 'is-step-stamp' : ''}`}>
+    <section className={`tigers-editor ${stepClass}`}>
       <div className="tigers-editor__left">
         <header className="tigers-editor__header">
           <div className="tigers-editor__header-side">
@@ -535,7 +538,7 @@ export function TigersEditor({ variant }: { variant: string | null }) {
               stamps={availableStamps}
               selectedLayout={selectedLayout}
               selectedStamps={selectedStamps}
-              onSelectLayout={setSelectedLayout}
+              onSelectLayout={selectLayout}
               onSelectLayoutStamp={selectLayoutStamp}
             />
           ) : null}
