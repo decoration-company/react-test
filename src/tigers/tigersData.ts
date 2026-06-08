@@ -7,7 +7,7 @@ import type {
   TigersStamp,
 } from './tigersTypes'
 import { PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX } from '../pixel9a/constants'
-import { KISEKAE_CLIP_VIEW_BOX } from './tigersClipPaths'
+import { KISEKAE_PRINT_AREA_BOUNDS } from './tigersClipPaths'
 
 const ASSET_BASE = '/assets/tigers'
 
@@ -104,7 +104,7 @@ export const tigersLayouts: TigersLayout[] = [
     stampCount: 1,
     stampAlignments: ['bottomRight'],
     stampSizeScales: [0.45],
-    stampPositions: [{ top: 0, right: 12, bottom: 2, left: 0 }],
+    stampPositions: [{ top: 0, right: 4, bottom: 8, left: 0 }],
     stampAngles: [-20],
   },
   {
@@ -115,7 +115,7 @@ export const tigersLayouts: TigersLayout[] = [
     stampSizeScales: [0.7, 0.45],
     stampPositions: [
       { top: 0, right: 0, bottom: 0, left: 0 },
-      { top: 0, right: 12, bottom: 2, left: 0 },
+      { top: 0, right: 4, bottom: 8, left: 0 },
     ],
     stampAngles: [0, -20],
   },
@@ -141,8 +141,8 @@ const TIGERS_ITEM_PROFILES: Record<TigersCaseKind, Omit<TigersMockItem, 'variant
     colorName: 'ナチュラル',
     price: 1540,
     caseColor: null,
-    printWidth: KISEKAE_CLIP_VIEW_BOX.width,
-    printHeight: KISEKAE_CLIP_VIEW_BOX.height,
+    printWidth: KISEKAE_PRINT_AREA_BOUNDS.width,
+    printHeight: KISEKAE_PRINT_AREA_BOUNDS.height,
   },
   'hard-clear': {
     caseKind: 'hard-clear',

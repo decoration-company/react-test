@@ -123,41 +123,8 @@ function StampGrid({
   )
 }
 
-function LayoutIcon({ layout, selectedStamps }: { layout: TigersLayout; selectedStamps: TigersStamp[] }) {
-  const first = selectedStamps[0] ?? tigersStamps[1]
-  const second = selectedStamps[1] ?? first
-
-  if (layout.id === 'double') {
-    return (
-      <div className="tigers-layout-icon">
-        <img className="is-center" src={first.imagePath} alt="" />
-        <img
-          className={`is-bottom-right ${selectedStamps.length > 1 ? '' : 'is-faded'}`}
-          src={second.imagePath}
-          alt=""
-        />
-      </div>
-    )
-  }
-
-  if (layout.id === 'pattern') {
-    return (
-      <div className="tigers-layout-icon is-pattern">
-        {Array.from({ length: 12 }).map((_, index) => (
-          <img key={`pattern-${index}`} src={first.imagePath} alt="" />
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className={`tigers-layout-icon ${layout.id === 'bottom-right' ? 'is-one-point' : ''}`}>
-      <img src={first.imagePath} alt="" />
-    </div>
-  )
-}
-
 function LayoutSelection({
+  item,
   layouts,
   stamps,
   selectedLayout,
@@ -165,6 +132,7 @@ function LayoutSelection({
   onSelectLayout,
   onSelectLayoutStamp,
 }: {
+  item: TigersMockItem
   layouts: TigersLayout[]
   stamps: TigersStamp[]
   selectedLayout: TigersLayout | null
@@ -194,8 +162,14 @@ function LayoutSelection({
               onClick={() => onSelectLayout(layout)}
               aria-pressed={selected}
             >
-              <span className="tigers-layout-option__phone">
-                <LayoutIcon layout={layout} selectedStamps={selectedStamps} />
+              <span className={`tigers-layout-option__phone tigers-layout-option__phone--${item.caseKind}`}>
+                <TigersDesignPreview
+                  selectedStamps={selectedStamps}
+                  selectedLayout={layout}
+                  selectedBackground={null}
+                  selectedItem={item}
+                  mode="thumbnail"
+                />
               </span>
               <span className="tigers-layout-option__name">{layout.name}</span>
               <span className="tigers-selection-dot" />
@@ -531,6 +505,7 @@ export function TigersEditor({ variant }: { variant: string | null }) {
           ) : null}
           {currentStep === 'layout' ? (
             <LayoutSelection
+              item={item}
               layouts={tigersLayouts}
               stamps={availableStamps}
               selectedLayout={selectedLayout}

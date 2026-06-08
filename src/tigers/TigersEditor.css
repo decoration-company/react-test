@@ -129,7 +129,7 @@ body.tigers-editor-body * {
 
 .tigers-editor.is-step-layout .tigers-preview-area,
 .tigers-editor.is-step-background .tigers-preview-area {
-  height: clamp(240px, 32svh, 300px);
+  height: clamp(320px, 44svh, 420px);
 }
 
 .tigers-selected-ribbon {
@@ -266,28 +266,38 @@ body.tigers-editor-body * {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 28px;
+  gap: 16px;
 }
 
-.tigers-layout-options,
-.tigers-background-options {
+.tigers-layout-options {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 16px 12px;
-  padding: 0 20px;
+  gap: 12px 12px;
+  padding: 0 20px 4px;
 }
 
 .tigers-background-options {
-  display: grid;
-  grid-template-columns: repeat(3, 70px);
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 16px 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
 }
 
-.tigers-layout-option,
-.tigers-background-option {
+.tigers-background-options::-webkit-scrollbar {
+  display: none;
+}
+
+.tigers-layout-option {
   display: flex;
-  width: 70px;
-  min-width: 70px;
+  flex: 0 0 auto;
+  width: 76px;
+  min-width: 76px;
   flex-direction: column;
   align-items: center;
   gap: 8px;
@@ -298,19 +308,84 @@ body.tigers-editor-body * {
   cursor: pointer;
 }
 
-.tigers-layout-option__phone,
-.tigers-background-option__thumb {
+.tigers-background-option {
+  display: flex;
+  flex: 1 0 48px;
+  scroll-snap-align: start;
+  min-width: 48px;
+  width: auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #333333;
+  cursor: pointer;
+}
+
+.tigers-layout-option__phone {
   display: block;
-  width: 70px;
-  height: 130px;
+  width: 76px;
+  height: auto;
   overflow: hidden;
   border: 3px solid #dddddd;
-  border-radius: 18px;
+  border-radius: 0;
   background-color: #f0f0f0;
   transition: border-width 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
-.tigers-layout-option.is-selected .tigers-layout-option__phone,
+.tigers-layout-option__phone--hard-clear {
+  aspect-ratio: 207.87 / 441.93;
+}
+
+.tigers-layout-option__phone--kisekae-face {
+  aspect-ratio: 640 / 940;
+}
+
+.tigers-layout-option__phone .tigers-design-preview {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+}
+
+.tigers-layout-option__phone .tigers-design-preview__case-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.tigers-design-preview--thumbnail {
+  padding: 0;
+}
+
+.tigers-design-preview--thumbnail .tigers-design-preview__case-svg {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+}
+
+.tigers-background-option__thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 52 / 96;
+  height: auto;
+  overflow: hidden;
+  border: 3px solid #dddddd;
+  border-radius: 14px;
+  background-color: #f0f0f0;
+  transition: border-width 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.tigers-layout-option.is-selected .tigers-layout-option__phone {
+  border-width: 4px;
+  border-color: #ffe500;
+  box-shadow: 0 4px 12px rgba(255, 229, 0, 0.4);
+}
+
 .tigers-background-option.is-selected .tigers-background-option__thumb {
   border-width: 4px;
   border-color: #ffe500;
@@ -360,68 +435,6 @@ body.tigers-editor-body * {
 .is-selected > .tigers-selection-dot {
   width: 24px;
   background: #ffe500;
-}
-
-.tigers-layout-icon {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-
-.tigers-layout-icon > img {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 28px;
-  height: 28px;
-  object-fit: contain;
-  transform: translate(-50%, -50%);
-}
-
-.tigers-layout-icon.is-one-point > img {
-  top: auto;
-  right: 5px;
-  bottom: 0;
-  left: auto;
-  width: 20px;
-  height: 20px;
-  transform: rotate(-20deg);
-  transform-origin: top left;
-}
-
-.tigers-layout-icon .is-center {
-  width: 28px;
-  height: 28px;
-}
-
-.tigers-layout-icon .is-bottom-right {
-  top: auto;
-  right: 5px;
-  bottom: 0;
-  left: auto;
-  width: 20px;
-  height: 20px;
-  transform: rotate(-20deg);
-  transform-origin: top left;
-}
-
-.tigers-layout-icon .is-faded {
-  opacity: 0.3;
-}
-
-.tigers-layout-icon.is-pattern {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  align-content: center;
-  padding: 8px;
-}
-
-.tigers-layout-icon.is-pattern img {
-  position: static;
-  width: 18px;
-  height: 18px;
-  transform: none;
 }
 
 .tigers-additional-stamps {
@@ -504,8 +517,9 @@ body.tigers-editor-body * {
 
 .tigers-background-selection__name {
   margin: 0;
+  padding: 0 20px;
   color: #333333;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.35;
   font-weight: 700;
   text-align: center;
@@ -541,7 +555,8 @@ body.tigers-editor-body * {
 .tigers-design-preview {
   display: grid;
   place-items: center;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -568,8 +583,19 @@ body.tigers-editor-body * {
   filter: none;
 }
 
+.tigers-preview-area .tigers-design-preview {
+  width: auto;
+  max-width: 100%;
+  height: 100%;
+  padding: 4px 8px;
+}
+
 .tigers-preview-area .tigers-design-preview__case-svg {
-  height: clamp(160px, 20svh, 210px);
+  display: block;
+  height: 100%;
+  width: auto;
+  max-height: 100%;
+  max-width: none;
 }
 
 .tigers-design-preview__canvas-bg {
@@ -676,7 +702,7 @@ body.tigers-editor-body * {
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  height: clamp(280px, 46svh, 380px);
+  height: clamp(340px, 52svh, 460px);
   min-height: 0;
   overflow: hidden;
 }
@@ -685,7 +711,7 @@ body.tigers-editor-body * {
   width: auto;
   max-width: 100%;
   height: 100%;
-  padding: 16px 24px;
+  padding: 12px 20px;
 }
 
 .tigers-preview-page__mockup .tigers-design-preview__case-svg {
@@ -781,8 +807,13 @@ body.tigers-editor-body * {
 }
 
 @media (max-width: 379px) {
+  .tigers-editor.is-step-layout .tigers-preview-area,
+  .tigers-editor.is-step-background .tigers-preview-area {
+    height: clamp(280px, 40svh, 360px);
+  }
+
   .tigers-preview-page__mockup {
-    height: clamp(240px, 44svh, 320px);
+    height: clamp(300px, 48svh, 400px);
   }
 
   .tigers-section-title h2 {

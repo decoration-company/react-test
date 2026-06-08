@@ -17,8 +17,25 @@ export const KISEKAE_CLIP_VIEW_BOX = {
   height: 940,
 } as const
 
+/** `#print_area` path の bbox（svgpathtools 算出）。スタンプ配置はこの矩形基準。 */
+export const KISEKAE_PRINT_AREA_BOUNDS = {
+  left: 141.93,
+  top: 90.15,
+  width: 356.17,
+  height: 759.7,
+} as const
+
+export type TigersDesignArea = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export type TigersClipProfile = {
   viewBox: { width: number; height: number }
+  /** スタンプ・背景の配置矩形（viewBox 座標）。Pixel は viewBox 全体、kisekae は print_area。 */
+  designArea: TigersDesignArea
   /** モックアップの影・筐体シルエット。 */
   outlinePathD: string
   /** スタンプ / 背景のマスク。 */
@@ -28,10 +45,25 @@ export type TigersClipProfile = {
   baseImagePath: string | null
 }
 
+function designAreaFromBounds(bounds: {
+  left: number
+  top: number
+  width: number
+  height: number
+}): TigersDesignArea {
+  return {
+    x: bounds.left,
+    y: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+  }
+}
+
 export function tigersClipProfile(caseKind: TigersCaseKind): TigersClipProfile {
   if (caseKind === 'kisekae-face') {
     return {
       viewBox: KISEKAE_CLIP_VIEW_BOX,
+      designArea: designAreaFromBounds(KISEKAE_PRINT_AREA_BOUNDS),
       outlinePathD: KISEKAE_BLEED_AREA_PATH_D,
       maskPathD: KISEKAE_PRINT_AREA_PATH_D,
       fillRule: 'nonzero',
@@ -41,6 +73,12 @@ export function tigersClipProfile(caseKind: TigersCaseKind): TigersClipProfile {
 
   return {
     viewBox: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX,
+    designArea: designAreaFromBounds({
+      left: 0,
+      top: 0,
+      width: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.width,
+      height: PIXEL_9A_CASE_CLIP_SVG_VIEW_BOX.height,
+    }),
     outlinePathD: PIXEL_9A_CASE_CLIP_PATH_D,
     maskPathD: PIXEL_9A_CASE_CLIP_PATH_D,
     fillRule: 'evenodd',
