@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PrintSpec } from '../api/commerce'
-import {
-  tigersLayouts,
-  tigersStamps,
-  tigersStampsOnSale,
-  visibleTigersBackgrounds,
-} from './tigersData'
+import { tigersLayouts, tigersStamps } from './tigersData'
+import { useTigersCatalog } from './useTigersCatalog'
 import { TigersDesignPreview } from './TigersDesignPreview'
 import { useTigersPrintSpec } from './tigersPrintSpec'
 import { saveTigersDesign } from './tigersSave'
@@ -361,15 +357,27 @@ function PreviewScreen({
 
 export function TigersEditor({ variant }: { variant: string | null }) {
   const { item, printSpec, specLoading, specError } = useTigersPrintSpec(variant)
-  const availableStamps = useMemo(() => tigersStampsOnSale(), [])
+  const catalog = useTigersCatalog(item.caseKind)
+  const availableStamps = catalog.stamps
 
   const [currentStep, setCurrentStep] = useState<TigersStep>('stamp')
-  const [selectedStamps, setSelectedStamps] = useState<TigersStamp[]>(() => {
-    const firstStamp = tigersStampsOnSale()[0]
-    return firstStamp ? [firstStamp] : []
-  })
+  const [selectedStamps, setSelectedStamps] = useState<TigersStamp[]>([])
   const [selectedLayout, setSelectedLayout] = useState<TigersLayout>(tigersLayouts[0])
-  const [selectedBackground, setSelectedBackground] = useState<TigersBackground>(visibleTigersBackgrounds[0])
+  const [selectedBackground, setSelectedBackground] = useState<TigersBackground | null>(null)
+
+  useEffect(() => {
+    if (selectedStamps.length > 0 || availableStamps.length === 0) {
+      return
+    }
+    setSelectedStamps([availableStamps[0]])
+  }, [availableStamps, selectedStamps.length])
+
+  useEffect(() => {
+    if (selectedBackground || catalog.backgrounds.length === 0) {
+      return
+    }
+    setSelectedBackground(catalog.backgrounds[0])
+  }, [catalog.backgrounds, selectedBackground])
 
   useEffect(() => {
     document.body.classList.add('tigers-editor-body')
@@ -436,14 +444,23 @@ export function TigersEditor({ variant }: { variant: string | null }) {
         ? selectedStamps.length >= selectedLayout.stampCount
         : true
 
+  const resolvedBackground = selectedBackground ?? catalog.backgrounds[0] ?? null
+
   if (currentStep === 'preview') {
+    if (!resolvedBackground) {
+      return (
+        <section className="tigers-editor">
+          <p className="tigers-editor__spec-status" role="status">背景を読み込み中...</p>
+        </section>
+      )
+    }
     return (
       <PreviewScreen
         item={item}
         printSpec={printSpec}
         selectedStamps={selectedStamps}
         selectedLayout={selectedLayout}
-        selectedBackground={selectedBackground}
+        selectedBackground={resolvedBackground}
         onBack={goBack}
       />
     )
@@ -460,6 +477,14 @@ export function TigersEditor({ variant }: { variant: string | null }) {
       {specError ? (
         <p className="tigers-editor__spec-status tigers-editor__spec-status--warn" role="status">
           印刷仕様の取得に失敗しました（ローカル設定で続行）: {specError}
+        </p>
+      ) : null}
+      {catalog.loading ? (
+        <p className="tigers-editor__spec-status" role="status">デザインライブラリを読み込み中...</p>
+      ) : null}
+      {catalog.error ? (
+        <p className="tigers-editor__spec-status tigers-editor__spec-status--warn" role="status">
+          ライブラリ取得失敗（静的素材で続行）: {catalog.error}
         </p>
       ) : null}
       <div className="tigers-editor__left">
@@ -493,7 +518,7 @@ export function TigersEditor({ variant }: { variant: string | null }) {
               <TigersDesignPreview
                 selectedStamps={selectedStamps}
                 selectedLayout={selectedLayout}
-                selectedBackground={selectedBackground}
+                selectedBackground={resolvedBackground}
                 selectedItem={item}
               />
             )}
@@ -523,8 +548,8 @@ export function TigersEditor({ variant }: { variant: string | null }) {
           ) : null}
           {currentStep === 'background' ? (
             <BackgroundSelection
-              backgrounds={visibleTigersBackgrounds}
-              selectedBackground={selectedBackground}
+              backgrounds={catalog.backgrounds}
+              selectedBackground={selectedBackground ?? catalog.backgrounds[0]}
               onSelect={setSelectedBackground}
             />
           ) : null}
