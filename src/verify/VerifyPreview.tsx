@@ -296,16 +296,72 @@ function resolvePlacementCanvas(
   return baseImageSize ?? clipSize
 }
 
-function buildCoverTransform(canvas: PreviewSize, imageSize: PreviewSize): ImageTransform {
-  const coverScale = Math.max(canvas.width / imageSize.width, canvas.height / imageSize.height)
+type CanvasRect = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+function computeGuideTransformParams(
+  canvasSize: PreviewSize,
+  clipSize: PreviewSize,
+): { scale: number; offsetX: number; offsetY: number; needsTransform: boolean } {
+  const needsTransform =
+    canvasSize.width !== clipSize.width || canvasSize.height !== clipSize.height
+  if (!needsTransform) {
+    return { scale: 1, offsetX: 0, offsetY: 0, needsTransform: false }
+  }
+  const scale = Math.min(canvasSize.width / clipSize.width, canvasSize.height / clipSize.height)
   return {
-    centerX: canvas.width / 2,
-    centerY: canvas.height / 2,
+    scale,
+    offsetX: (canvasSize.width - clipSize.width * scale) / 2,
+    offsetY: (canvasSize.height - clipSize.height * scale) / 2,
+    needsTransform: true,
+  }
+}
+
+/** commerce mockup_compositor._compose_base_image の print_area path bounds 相当（canvas 座標） */
+function resolvePrintAreaBoundsInCanvas(
+  clipSize: PreviewSize,
+  canvasSize: PreviewSize,
+): CanvasRect {
+  const { scale, offsetX, offsetY } = computeGuideTransformParams(canvasSize, clipSize)
+  return {
+    x: offsetX,
+    y: offsetY,
+    width: clipSize.width * scale,
+    height: clipSize.height * scale,
+  }
+}
+
+function buildCoverTransformInRect(dst: CanvasRect, imageSize: PreviewSize): ImageTransform {
+  const coverScale = Math.max(dst.width / imageSize.width, dst.height / imageSize.height)
+  return {
+    centerX: dst.x + dst.width / 2,
+    centerY: dst.y + dst.height / 2,
     imageWidth: imageSize.width * coverScale,
     imageHeight: imageSize.height * coverScale,
     scale: 1,
     rotationRad: 0,
   }
+}
+
+function buildCoverTransform(canvas: PreviewSize, imageSize: PreviewSize): ImageTransform {
+  return buildCoverTransformInRect({ x: 0, y: 0, width: canvas.width, height: canvas.height }, imageSize)
+}
+
+/** grip: 印刷範囲 clip bounds 基準。diary: clip viewBox 全体（従来どおり） */
+function buildCommerceCoverTransform(
+  isDiaryCase: boolean,
+  clipSize: PreviewSize,
+  canvasSize: PreviewSize,
+  imageSize: PreviewSize,
+): ImageTransform {
+  if (isDiaryCase) {
+    return buildCoverTransform(clipSize, imageSize)
+  }
+  return buildCoverTransformInRect(resolvePrintAreaBoundsInCanvas(clipSize, canvasSize), imageSize)
 }
 
 function buildDiaryCssMaskUrl(
@@ -446,14 +502,18 @@ function isPlacementReasonable(placement: BulkEmbedPlacement, canvas: PreviewSiz
 
 function resolveInitialTransform(
   savedPlacement: BulkEmbedPlacement | null | undefined,
+  isDiaryCase: boolean,
+  clipSize: PreviewSize,
   canvas: PreviewSize,
   imageSize: PreviewSize,
 ): ImageTransform {
-  if (!savedPlacement) return buildCoverTransform(canvas, imageSize)
+  if (!savedPlacement) {
+    return buildCommerceCoverTransform(isDiaryCase, clipSize, canvas, imageSize)
+  }
   const remapped = remapPlacementToCanvas(savedPlacement, canvas)
   if (!isPlacementReasonable(remapped, canvas)) {
     logWarn('placement:invalid-fallback-to-cover', { savedPlacement, remapped, canvas })
-    return buildCoverTransform(canvas, imageSize)
+    return buildCommerceCoverTransform(isDiaryCase, clipSize, canvas, imageSize)
   }
   return transformFromPlacement(remapped)
 }
@@ -715,8 +775,9 @@ export function VerifyPreview({
       }
 
       const isDiaryCase = spec?.product_type.code === 'diary-case'
-      const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
-      const nextTransform = buildCoverTransform(canvas, size)
+      const clipSize = printAreaShape.viewBox
+      const canvas = resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize)
+      const nextTransform = buildCommerceCoverTransform(isDiaryCase, clipSize, canvas, size)
       logDebug('file:ready-to-render', {
         imageUrl: summarizeImageUrl(url),
         naturalSize: size,
@@ -751,10 +812,17 @@ export function VerifyPreview({
         return
       }
       const isDiaryCase = spec?.product_type.code === 'diary-case'
-      const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
+      const clipSize = printAreaShape.viewBox
+      const canvas = resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize)
       lastNaturalSizeRef.current = size
       const savedPlacement = skipInitialPlacementRef.current ? null : embedBulk?.initialPlacement
-      const nextTransform = resolveInitialTransform(savedPlacement, canvas, size)
+      const nextTransform = resolveInitialTransform(
+        savedPlacement,
+        isDiaryCase,
+        clipSize,
+        canvas,
+        size,
+      )
       if (abort?.cancelled) return
       setImageUrl(url)
       setTransform(nextTransform)
@@ -775,17 +843,25 @@ export function VerifyPreview({
     const naturalSize = lastNaturalSizeRef.current
     if (!naturalSize) return
     const isDiaryCase = spec?.product_type.code === 'diary-case'
-    const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
+    const clipSize = printAreaShape.viewBox
+    const canvas = resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize)
     skipInitialPlacementRef.current = true
-    setTransform(buildCoverTransform(canvas, naturalSize))
+    const bounds = isDiaryCase
+      ? { x: 0, y: 0, width: clipSize.width, height: clipSize.height }
+      : resolvePrintAreaBoundsInCanvas(clipSize, canvas)
+    setTransform(buildCoverTransformInRect(bounds, naturalSize))
     setFileError(null)
-    logDebug('placement:reset-to-cover', { canvas, naturalSize })
+    logDebug('placement:reset-to-cover', { canvas, clipSize, bounds, naturalSize })
   }, [baseImageSize, imageUrl, printAreaShape, spec])
 
   useEffect(() => {
     const initialUrl = embedBulk?.initialDesignUrl?.trim()
     if (!initialUrl || !printAreaShape) return
     if (userOverrodeImageRef.current) return
+    const isDiaryCase = spec?.product_type.code === 'diary-case'
+    const needsBaseSize =
+      !isDiaryCase && activeBaseImageUrl && !isClipSvgUrl(activeBaseImageUrl)
+    if (needsBaseSize && !baseImageSize) return
     const abort = { cancelled: false }
     applyDesignImage(initialUrl, abort).catch(err => {
       if (!abort.cancelled) {
@@ -796,7 +872,9 @@ export function VerifyPreview({
       abort.cancelled = true
     }
   }, [
+    activeBaseImageUrl,
     applyDesignImage,
+    baseImageSize,
     embedBulk?.initialDesignUrl,
     embedBulk?.initialPlacement,
     printAreaShape,
@@ -954,18 +1032,12 @@ export function VerifyPreview({
 
   const showBaseImage = Boolean(baseImageUrl && !(isDiaryCase && isClipSvgUrl(baseImageUrl)))
   const viewBoxAttr = canvasSize ? `0 0 ${canvasSize.width} ${canvasSize.height}` : undefined
-  const needsLegacyGuideTransform = Boolean(
-    baseImageSize && clipSize && (baseImageSize.width !== clipSize.width || baseImageSize.height !== clipSize.height),
-  )
-  const guideScale = needsLegacyGuideTransform && canvasSize && clipSize
-    ? Math.min(canvasSize.width / clipSize.width, canvasSize.height / clipSize.height)
-    : 1
-  const guideOffsetX = needsLegacyGuideTransform && canvasSize && clipSize
-    ? (canvasSize.width - clipSize.width * guideScale) / 2
-    : 0
-  const guideOffsetY = needsLegacyGuideTransform && canvasSize && clipSize
-    ? (canvasSize.height - clipSize.height * guideScale) / 2
-    : 0
+  const guideParams =
+    canvasSize && clipSize ? computeGuideTransformParams(canvasSize, clipSize) : null
+  const needsLegacyGuideTransform = guideParams?.needsTransform ?? false
+  const guideScale = guideParams?.scale ?? 1
+  const guideOffsetX = guideParams?.offsetX ?? 0
+  const guideOffsetY = guideParams?.offsetY ?? 0
   const guideTransform = needsLegacyGuideTransform
     ? `translate(${guideOffsetX} ${guideOffsetY}) scale(${guideScale})`
     : undefined
