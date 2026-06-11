@@ -358,8 +358,10 @@ export function parseGripCaseClipSvg(svgText: string): GripCaseClipParts {
   })
 
   const printAreaMarkup = serializeSvgPart(doc, 'print_area')
-  const printAreaClipMarkup = serializeClipSvgPart(doc, 'print_area')
+  const legacyClipMarkup = serializeClipSvgPart(doc, 'print_area')
   const printAreaImageFillMarkup = serializeImageFillSvgPart(doc, 'print_area')
+  const commerceClipMarkup = buildCommercePrintAreaClipMarkup(doc, 'print_area')
+  const printAreaClipMarkup = commerceClipMarkup ?? legacyClipMarkup
   if (!printAreaMarkup || !printAreaClipMarkup || !printAreaImageFillMarkup) {
     throw new Error('SVG 解析失敗: #print_area が見つかりません')
   }
@@ -369,6 +371,7 @@ export function parseGripCaseClipSvg(svgText: string): GripCaseClipParts {
 
   logSvg('parseGripCaseClipSvg:done', {
     printAreaMarkupLength: printAreaMarkup.length,
+    usesCommerceClip: Boolean(commerceClipMarkup),
     printAreaClipMarkupLength: printAreaClipMarkup.length,
     printAreaImageFillMarkupLength: printAreaImageFillMarkup.length,
     safeAreaMarkupLength: safeAreaMarkup?.length ?? 0,
@@ -421,6 +424,43 @@ function collectDiaryGuideLayers(doc: Document): DiaryGuideLayer[] {
 
 function escapePathAttr(d: string): string {
   return d.replaceAll('&', '&amp;').replaceAll('"', '&quot;')
+}
+
+/** mockup_compositor._first_svg_subpath 相当 */
+function firstSvgSubpath(pathData: string): string {
+  const starts = [...pathData.matchAll(/(?=[Mm])/g)].map(m => m.index ?? 0)
+  if (starts.length < 2) return pathData
+  return pathData.slice(starts[0], starts[1])
+}
+
+/** mockup_compositor._iter_print_area_clip_path_d 相当（inline style のみ判定） */
+function collectCommercePrintAreaClipPathD(element: Element): string[] {
+  const paths: string[] = []
+  const walk = (el: Element) => {
+    if (el.localName === 'path') {
+      const d = el.getAttribute('d')?.trim()
+      const style = (el.getAttribute('style') ?? '').replace(/\s/g, '').toLowerCase()
+      if (!d) return
+      if (style.includes('fill:none')) {
+        paths.push(d)
+      } else if (!style.includes('fill:#fff') && !style.includes('fill:white')) {
+        paths.push(firstSvgSubpath(d))
+      }
+    }
+    for (const child of el.children) walk(child)
+  }
+  walk(element)
+  return paths
+}
+
+/** commerce _print_area_path_data → clip path（グリップ等の evenodd 合成） */
+function buildCommercePrintAreaClipMarkup(doc: Document, groupId = 'print_area'): string | null {
+  const source = doc.getElementById(groupId)
+  if (!source) return null
+  const ds = collectCommercePrintAreaClipPathD(source)
+  if (ds.length === 0) return null
+  const rule = 'evenodd'
+  return `<path d="${escapePathAttr(ds.join(' '))}" fill="#000" stroke="none" fill-rule="${rule}" clip-rule="${rule}" />`
 }
 
 /** 手帳型の印刷クリップ = #bleed + #camera-hole (evenOdd)。Flutter と同じ */
