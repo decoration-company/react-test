@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { fetchPrintSpec, type PrintSpec } from './fetchPrintSpec'
 import { parseHardCaseColorFromVariant } from '../lib/hardCaseColor'
+import { EDITOR_BUILD_LABEL, EDITOR_DEPLOYMENT_ID, EDITOR_GIT_SHA } from '../lib/editorBuildInfo'
 import { resolveRemoteAssetUrl } from '../lib/resolveRemoteAssetUrl'
 import {
   fetchAndParseDiaryCaseClip,
@@ -27,9 +28,6 @@ const IMAGE_MAX_SCALE = 4
 const MAX_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const LOG_PREFIX = '[verify-preview]'
-/** Console でデプロイ確認用（Vercel push ごとに更新） */
-const BULK_PREVIEW_BUILD = '7827f5b-clip-layer-v2'
-
 type ImageTransform = {
   centerX: number
   centerY: number
@@ -709,7 +707,14 @@ export function VerifyPreview({
   }, [transform])
 
   useEffect(() => {
-    logDebug('mounted', { variant, clipId, build: BULK_PREVIEW_BUILD })
+    logDebug('mounted', {
+      variant,
+      clipId,
+      gitSha: EDITOR_GIT_SHA,
+      deploymentId: EDITOR_DEPLOYMENT_ID,
+      buildLabel: EDITOR_BUILD_LABEL,
+      href: window.location.href,
+    })
     return () => logDebug('unmounted', { variant, clipId })
   }, [clipId, variant])
 
@@ -1257,7 +1262,9 @@ export function VerifyPreview({
   useEffect(() => {
     if (canvasSize && clipSize) {
       logDebug('clip-layer-transform', {
-        build: BULK_PREVIEW_BUILD,
+        buildLabel: EDITOR_BUILD_LABEL,
+        gitSha: EDITOR_GIT_SHA,
+        deploymentId: EDITOR_DEPLOYMENT_ID,
         coverMode,
         clipLayerTransform: clipLayerTransform ?? null,
         clipToCanvasScale,
@@ -1270,7 +1277,9 @@ export function VerifyPreview({
         ? resolveCoverBounds(coverMode, clipSize, canvasSize, printAreaShape?.clipMarkup)
         : null
     logDebug('render-state', {
-      build: BULK_PREVIEW_BUILD,
+      buildLabel: EDITOR_BUILD_LABEL,
+      gitSha: EDITOR_GIT_SHA,
+      deploymentId: EDITOR_DEPLOYMENT_ID,
       variant,
       clipId,
       imagePatternId,
@@ -1401,6 +1410,9 @@ export function VerifyPreview({
           <div style={{ margin: '8px 0 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
               プレビュー上をドラッグして位置を調整。拡大縮小は下のスライダーから。
+              <span style={{ display: 'block', marginTop: 4, fontSize: 10, color: '#8c9196' }}>
+                editor {EDITOR_BUILD_LABEL}
+              </span>
             </p>
             <div
               style={{
