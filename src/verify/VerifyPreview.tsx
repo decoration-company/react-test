@@ -450,7 +450,68 @@ function resolveCoverBounds(
   }
 }
 
-/** commerce _draw_image_cover 相当 — dst 矩形に xMidYMid slice（中央クロップ）でフィット */
+/** commerce _draw_image_cover の src_rect 相当（自然画像座標） */
+function computeCoverSourceViewBox(imageSize: PreviewSize, dst: PreviewSize): CanvasRect {
+  const imageAspect = imageSize.width / imageSize.height
+  const dstAspect = dst.width / dst.height
+  if (imageAspect > dstAspect) {
+    const srcW = imageSize.height * dstAspect
+    return {
+      x: (imageSize.width - srcW) / 2,
+      y: 0,
+      width: srcW,
+      height: imageSize.height,
+    }
+  }
+  const srcH = imageSize.width / dstAspect
+  return {
+    x: 0,
+    y: (imageSize.height - srcH) / 2,
+    width: imageSize.width,
+    height: srcH,
+  }
+}
+
+/** transform グループ内のローカル座標。visual サイズは imageWidth*scale */
+function buildUserImageRenderProps(
+  transform: ImageTransform,
+  naturalSize: PreviewSize | null,
+): {
+  x: number
+  y: number
+  width: number
+  height: number
+  viewBox?: string
+  preserveAspectRatio: string
+  sourceCrop: CanvasRect | null
+} {
+  const visualW = transform.imageWidth * transform.scale
+  const visualH = transform.imageHeight * transform.scale
+  const x = -transform.imageWidth / 2
+  const y = -transform.imageHeight / 2
+  if (!naturalSize) {
+    return {
+      x,
+      y,
+      width: transform.imageWidth,
+      height: transform.imageHeight,
+      preserveAspectRatio: 'xMidYMid slice',
+      sourceCrop: null,
+    }
+  }
+  const sourceCrop = computeCoverSourceViewBox(naturalSize, { width: visualW, height: visualH })
+  return {
+    x,
+    y,
+    width: transform.imageWidth,
+    height: transform.imageHeight,
+    viewBox: `${sourceCrop.x} ${sourceCrop.y} ${sourceCrop.width} ${sourceCrop.height}`,
+    preserveAspectRatio: 'none',
+    sourceCrop,
+  }
+}
+
+/** commerce _draw_image_cover 相当 — dst 矩形にフィット */
 function buildCoverTransformInRect(dst: CanvasRect, _imageSize: PreviewSize): ImageTransform {
   return {
     centerX: dst.x + dst.width / 2,
@@ -685,6 +746,7 @@ export function VerifyPreview({
   const [transform, setTransform] = useState<ImageTransform | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [imageSourceLabel, setImageSourceLabel] = useState<string | null>(null)
+  const [naturalImageSize, setNaturalImageSize] = useState<PreviewSize | null>(null)
   const [loadedBaseImage, setLoadedBaseImage] = useState<{ url: string; size: PreviewSize } | null>(null)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -925,6 +987,7 @@ export function VerifyPreview({
       })
 
       userOverrodeImageRef.current = true
+      setNaturalImageSize(size)
       setImageUrl(url)
       setTransform(nextTransform)
       setImageSourceLabel(file.name)
@@ -963,6 +1026,7 @@ export function VerifyPreview({
         printAreaShape.clipMarkup,
       )
       if (abort?.cancelled) return
+      setNaturalImageSize(size)
       setImageUrl(url)
       setTransform(nextTransform)
       setImageSourceLabel(labelFromImageUrl(url, embedBulk?.designLabel))
@@ -981,6 +1045,7 @@ export function VerifyPreview({
     userOverrodeImageRef.current = false
     skipInitialPlacementRef.current = false
     lastNaturalSizeRef.current = null
+    setNaturalImageSize(null)
     setImageSourceLabel(null)
   }, [variant, embedBulk?.initialDesignUrl, embedBulk?.initialPlacement])
 
@@ -1040,6 +1105,52 @@ export function VerifyPreview({
     embedBulk?.initialPlacement,
     printAreaShape,
     spec?.product_type.code,
+  ])
+
+  // base 画像読込後に canvas / coverMode が確定したら cover を再同期
+  useEffect(() => {
+    if (!embedBulk || !imageUrl || !printAreaShape || !spec || !naturalImageSize) return
+    if (userOverrodeImageRef.current || skipInitialPlacementRef.current) return
+    const isDiaryCase = spec.product_type.code === 'diary-case'
+    const clipSize = printAreaShape.viewBox
+    const canvas = resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize)
+    const savedPlacement = embedBulk.initialPlacement
+    if (savedPlacement && isPlacementReasonable(remapPlacementToCanvas(savedPlacement, canvas), canvas)) {
+      return
+    }
+    const needsBase =
+      !isDiaryCase && activeBaseImageUrl && !isClipSvgUrl(activeBaseImageUrl)
+    if (needsBase && !baseImageSize) return
+    const hasRenderableBase = computeHasRenderableBase(activeBaseImageUrl, isDiaryCase, baseImageSize)
+    const coverMode = resolveCoverMode(isDiaryCase, hasRenderableBase)
+    const next = buildCommerceCoverTransform(
+      coverMode,
+      clipSize,
+      canvas,
+      naturalImageSize,
+      printAreaShape.clipMarkup,
+    )
+    setTransform(prev => {
+      if (
+        prev &&
+        Math.abs(prev.centerX - next.centerX) < 0.5 &&
+        Math.abs(prev.centerY - next.centerY) < 0.5 &&
+        Math.abs(prev.imageWidth - next.imageWidth) < 0.5 &&
+        Math.abs(prev.imageHeight - next.imageHeight) < 0.5
+      ) {
+        return prev
+      }
+      logDebug('cover:resync-transform', { prev, next, coverMode, canvas })
+      return next
+    })
+  }, [
+    activeBaseImageUrl,
+    baseImageSize,
+    embedBulk,
+    imageUrl,
+    naturalImageSize,
+    printAreaShape,
+    spec,
   ])
 
   const postToParent = useCallback(
@@ -1211,6 +1322,10 @@ export function VerifyPreview({
   const transformAttr = transform
     ? `translate(${transform.centerX} ${transform.centerY}) rotate(${radToDeg(transform.rotationRad)}) scale(${transform.scale})`
     : undefined
+  const userImageRender = useMemo(
+    () => (transform ? buildUserImageRenderProps(transform, naturalImageSize) : null),
+    [naturalImageSize, transform],
+  )
 
   const diaryDesignMask =
     isDiaryCase && diaryPrintMask && canvasSize
@@ -1366,13 +1481,16 @@ export function VerifyPreview({
         userImageExists: Boolean(userImage),
         userImageHref: summarizeImageUrl(userImage?.getAttribute('href') ?? null),
         userImageBBox,
+        transform,
+        userImageRender,
+        clipLayerTransform,
         baseImageExists: Boolean(baseImage),
         baseImageHref: summarizeImageUrl(baseImage?.getAttribute('href') ?? null),
       })
     })
 
     return () => window.cancelAnimationFrame(frameId)
-  }, [canvasSize, clipId, imagePatternId, imageUrl, printAreaShape, transform, viewBoxAttr])
+  }, [canvasSize, clipId, clipLayerTransform, imagePatternId, imageUrl, printAreaShape, transform, userImageRender, viewBoxAttr])
 
   // Loading
   if (loading) return <p>Loading...</p>
@@ -1719,14 +1837,16 @@ export function VerifyPreview({
                     <image
                       data-verify-user-pattern-image="true"
                       href={svgDesignHref}
-                      x={-transform.imageWidth / 2}
-                      y={-transform.imageHeight / 2}
-                    width={transform.imageWidth}
-                    height={transform.imageHeight}
-                    preserveAspectRatio="xMidYMid slice"
-                    onLoad={() => logDebug('user-pattern-image:onLoad', {
+                      x={userImageRender?.x}
+                      y={userImageRender?.y}
+                      width={userImageRender?.width}
+                      height={userImageRender?.height}
+                      viewBox={userImageRender?.viewBox}
+                      preserveAspectRatio={userImageRender?.preserveAspectRatio ?? 'xMidYMid slice'}
+                      onLoad={() => logDebug('user-pattern-image:onLoad', {
                         imageUrl: summarizeImageUrl(imageUrl),
                         transform,
+                        userImageRender,
                         transformAttr,
                         imagePatternId,
                       })}
@@ -1794,14 +1914,16 @@ export function VerifyPreview({
                   <image
                     data-verify-user-image="true"
                     href={svgDesignHref}
-                    x={-transform.imageWidth / 2}
-                    y={-transform.imageHeight / 2}
-                    width={transform.imageWidth}
-                    height={transform.imageHeight}
-                    preserveAspectRatio="xMidYMid slice"
+                    x={userImageRender?.x}
+                    y={userImageRender?.y}
+                    width={userImageRender?.width}
+                    height={userImageRender?.height}
+                    viewBox={userImageRender?.viewBox}
+                    preserveAspectRatio={userImageRender?.preserveAspectRatio ?? 'xMidYMid slice'}
                     onLoad={() => logDebug('user-image-element:onLoad', {
                       imageUrl: summarizeImageUrl(imageUrl),
                       transform,
+                      userImageRender,
                       transformAttr,
                       clipId,
                       diaryMaskId,
