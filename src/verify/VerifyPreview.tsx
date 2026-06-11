@@ -384,6 +384,10 @@ export function VerifyPreview({
   const activeBaseImageUrl = spec
     ? spec.print_spec.base_image_url ?? deriveBaseImageUrl(spec.print_spec.print_area_svg_url)
     : null
+  const renderBaseImageUrl = useMemo(
+    () => (activeBaseImageUrl ? toRenderableImageUrl(activeBaseImageUrl) : null),
+    [activeBaseImageUrl],
+  )
   const baseImageSize = loadedBaseImage?.url === activeBaseImageUrl ? loadedBaseImage.size : null
 
   useEffect(() => {
@@ -515,8 +519,9 @@ export function VerifyPreview({
       return
     }
 
-    logDebug('baseImage:readNaturalSize:start', { baseImageUrl })
-    readNaturalSize(baseImageUrl)
+    const fetchUrl = toRenderableImageUrl(baseImageUrl)
+    logDebug('baseImage:readNaturalSize:start', { baseImageUrl, fetchUrl: summarizeImageUrl(fetchUrl) })
+    readNaturalSize(fetchUrl)
       .then(size => {
         if (!cancelled) {
           logDebug('baseImage:readNaturalSize:success', { baseImageUrl, size })
@@ -1270,7 +1275,6 @@ export function VerifyPreview({
                     <image
                       data-verify-user-pattern-image="true"
                       href={renderImageUrl}
-                      crossOrigin="anonymous"
                       x={-transform.imageWidth / 2}
                       y={-transform.imageHeight / 2}
                       width={transform.imageWidth}
@@ -1316,10 +1320,10 @@ export function VerifyPreview({
             )}
 
             {/* Base image */}
-            {showBaseImage && baseImageUrl && (
+            {showBaseImage && renderBaseImageUrl && (
               <image
                 data-verify-base-image="true"
-                href={baseImageUrl}
+                href={renderBaseImageUrl}
                 x="0"
                 y="0"
                 width={canvasSize.width}
@@ -1346,7 +1350,6 @@ export function VerifyPreview({
                   <image
                     data-verify-user-image="true"
                     href={renderImageUrl}
-                    crossOrigin="anonymous"
                     x={-transform.imageWidth / 2}
                     y={-transform.imageHeight / 2}
                     width={transform.imageWidth}
