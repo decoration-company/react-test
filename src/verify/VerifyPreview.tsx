@@ -303,6 +303,8 @@ type CanvasRect = {
   height: number
 }
 
+type CoverMode = 'diary' | 'base_image' | 'case_clip'
+
 function computeGuideTransformParams(
   canvasSize: PreviewSize,
   clipSize: PreviewSize,
@@ -319,6 +321,26 @@ function computeGuideTransformParams(
     offsetY: (canvasSize.height - clipSize.height * scale) / 2,
     needsTransform: true,
   }
+}
+
+/** clip / ガイド描画 — base_image は per-axis svg_to_base、それ以外は uniform guide */
+function computeClipLayerTransform(
+  coverMode: CoverMode,
+  clipSize: PreviewSize,
+  canvasSize: PreviewSize,
+): string | undefined {
+  if (coverMode === 'base_image') {
+    const sx = canvasSize.width / clipSize.width
+    const sy = canvasSize.height / clipSize.height
+    if (Math.abs(sx - 1) < 1e-9 && Math.abs(sy - 1) < 1e-9) return undefined
+    return `scale(${sx} ${sy})`
+  }
+  const { scale, offsetX, offsetY, needsTransform } = computeGuideTransformParams(
+    canvasSize,
+    clipSize,
+  )
+  if (!needsTransform) return undefined
+  return `translate(${offsetX} ${offsetY}) scale(${scale})`
 }
 
 /** commerce mockup_compositor._compose_base_image の print_area path bounds 相当（canvas 座標） */
@@ -375,8 +397,6 @@ function viewBoxRectInCanvas(clipSize: PreviewSize, canvasSize: PreviewSize): Ca
     height: clipSize.height * scale,
   }
 }
-
-type CoverMode = 'diary' | 'base_image' | 'case_clip'
 
 function resolveCoverMode(isDiaryCase: boolean, hasRenderableBase: boolean): CoverMode {
   if (isDiaryCase) return 'diary'
@@ -1171,11 +1191,10 @@ export function VerifyPreview({
     canvasSize && clipSize ? computeGuideTransformParams(canvasSize, clipSize) : null
   const needsLegacyGuideTransform = guideParams?.needsTransform ?? false
   const guideScale = guideParams?.scale ?? 1
-  const guideOffsetX = guideParams?.offsetX ?? 0
-  const guideOffsetY = guideParams?.offsetY ?? 0
-  const guideTransform = needsLegacyGuideTransform
-    ? `translate(${guideOffsetX} ${guideOffsetY}) scale(${guideScale})`
-    : undefined
+  const clipLayerTransform =
+    canvasSize && clipSize
+      ? computeClipLayerTransform(coverMode, clipSize, canvasSize)
+      : undefined
 
   const transformAttr = transform
     ? `translate(${transform.centerX} ${transform.centerY}) rotate(${radToDeg(transform.rotationRad)}) scale(${transform.scale})`
@@ -1190,8 +1209,8 @@ export function VerifyPreview({
   const useDiaryHtmlDesign = false
   const diaryCssMaskUrl = useMemo(() => {
     if (!useDiaryHtmlDesign || !diaryPrintMask || !canvasSize) return null
-    return buildDiaryCssMaskUrl(canvasSize, diaryPrintMask, guideTransform)
-  }, [canvasSize, diaryPrintMask, guideTransform, useDiaryHtmlDesign])
+    return buildDiaryCssMaskUrl(canvasSize, diaryPrintMask, clipLayerTransform)
+  }, [canvasSize, diaryPrintMask, clipLayerTransform, useDiaryHtmlDesign])
 
   const placementInfo = useMemo(() => {
     if (!transform) return null
@@ -1208,6 +1227,7 @@ export function VerifyPreview({
         clipViewBoxWidth: clipSize ? Math.round(clipSize.width * 100) / 100 : null,
         clipViewBoxHeight: clipSize ? Math.round(clipSize.height * 100) / 100 : null,
         guideScale: needsLegacyGuideTransform ? Math.round(guideScale * 1000) / 1000 : 1,
+        clipLayerTransform,
         baseImageUrl,
         hasRenderableBase,
         coverMode,
@@ -1217,6 +1237,7 @@ export function VerifyPreview({
     baseImageSize,
     canvasSize,
     clipSize,
+    clipLayerTransform,
     coverMode,
     guideScale,
     hasRenderableBase,
@@ -1251,7 +1272,7 @@ export function VerifyPreview({
       clipSize,
       canvasSize,
       viewBoxAttr,
-      guideTransform,
+      clipLayerTransform,
       transformAttr,
       placementInfo,
     })
@@ -1261,8 +1282,8 @@ export function VerifyPreview({
     canvasSize,
     clipId,
     clipSize,
+    clipLayerTransform,
     coverMode,
-    guideTransform,
     hasRenderableBase,
     imageUrl,
     loading,
@@ -1639,7 +1660,7 @@ export function VerifyPreview({
                     height={canvasSize.height}
                     fill="#000000"
                   />
-                  <g transform={guideTransform}>
+                  <g transform={clipLayerTransform}>
                     <g dangerouslySetInnerHTML={{ __html: diaryPrintMask.showMarkup }} />
                     {diaryPrintMask.holeMarkup ? (
                       <g dangerouslySetInnerHTML={{ __html: diaryPrintMask.holeMarkup }} />
@@ -1649,7 +1670,7 @@ export function VerifyPreview({
               ) : null}
               <clipPath id={clipId} clipPathUnits="userSpaceOnUse">
                 <g
-                  transform={guideTransform}
+                  transform={clipLayerTransform}
                   dangerouslySetInnerHTML={{ __html: printAreaShape.clipMarkup }}
                 />
               </clipPath>
@@ -1693,7 +1714,7 @@ export function VerifyPreview({
             {!isDiaryCase ? (
               <g className="verify-preview__part--paper">
                 <g
-                  transform={guideTransform}
+                  transform={clipLayerTransform}
                   dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
                 />
               </g>
@@ -1703,7 +1724,7 @@ export function VerifyPreview({
                 .map(layer => (
                   <g key={layer.id} className={diaryGuideLayerClass(layer.role)}>
                     <g
-                      transform={guideTransform}
+                      transform={clipLayerTransform}
                       dangerouslySetInnerHTML={{ __html: layer.markup }}
                     />
                   </g>
@@ -1767,7 +1788,7 @@ export function VerifyPreview({
                   <g
                     data-verify-image-fill="true"
                     className="verify-preview__image-fill"
-                    transform={guideTransform}
+                    transform={clipLayerTransform}
                     dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
                   />
                 ) : null}
@@ -1780,7 +1801,7 @@ export function VerifyPreview({
                   .map(layer => (
                     <g key={layer.id} className={diaryGuideLayerClass(layer.role)}>
                       <g
-                        transform={guideTransform}
+                        transform={clipLayerTransform}
                         dangerouslySetInnerHTML={{ __html: layer.markup }}
                       />
                     </g>
@@ -1791,7 +1812,7 @@ export function VerifyPreview({
             {showSafeArea && safeAreaShape && (
               <g className="verify-preview__part--safe">
                 <g
-                  transform={guideTransform}
+                  transform={clipLayerTransform}
                   dangerouslySetInnerHTML={{ __html: safeAreaShape.markup }}
                 />
               </g>
@@ -1801,7 +1822,7 @@ export function VerifyPreview({
             {showBleedArea && bleedAreaShape && (
               <g className="verify-preview__part--bleed">
                 <g
-                  transform={guideTransform}
+                  transform={clipLayerTransform}
                   dangerouslySetInnerHTML={{ __html: bleedAreaShape.markup }}
                 />
               </g>
@@ -1810,7 +1831,7 @@ export function VerifyPreview({
             {/* Print area outline (on top) */}
             <g className="verify-preview__part--print">
               <g
-                transform={guideTransform}
+                transform={clipLayerTransform}
                 dangerouslySetInnerHTML={{ __html: printAreaShape.markup }}
               />
             </g>
