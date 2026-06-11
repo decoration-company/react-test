@@ -350,38 +350,85 @@ function measureSvgMarkupBBox(markup: string, viewBox: PreviewSize): CanvasRect 
   }
 }
 
-function mapClipPathBBoxToCanvas(
+/** commerce mockup_compositor svg_to_base_x/y — cover 計算専用（guideTransform の uniform は使わない） */
+function mapClipPathBBoxToBaseCanvas(
   bbox: CanvasRect,
   clipSize: PreviewSize,
   canvasSize: PreviewSize,
 ): CanvasRect {
-  const { scale, offsetX, offsetY } = computeGuideTransformParams(canvasSize, clipSize)
+  const sx = canvasSize.width / clipSize.width
+  const sy = canvasSize.height / clipSize.height
   return {
-    x: offsetX + bbox.x * scale,
-    y: offsetY + bbox.y * scale,
-    width: bbox.width * scale,
-    height: bbox.height * scale,
+    x: bbox.x * sx,
+    y: bbox.y * sy,
+    width: bbox.width * sx,
+    height: bbox.height * sy,
   }
 }
 
-function resolvePrintAreaBoundsInCanvas(
+function viewBoxRectInCanvas(clipSize: PreviewSize, canvasSize: PreviewSize): CanvasRect {
+  const { scale, offsetX, offsetY } = computeGuideTransformParams(canvasSize, clipSize)
+  return {
+    x: offsetX,
+    y: offsetY,
+    width: clipSize.width * scale,
+    height: clipSize.height * scale,
+  }
+}
+
+type CoverMode = 'diary' | 'base_image' | 'case_clip'
+
+function resolveCoverMode(isDiaryCase: boolean, hasRenderableBase: boolean): CoverMode {
+  if (isDiaryCase) return 'diary'
+  if (hasRenderableBase) return 'base_image'
+  return 'case_clip'
+}
+
+function computeHasRenderableBase(
+  activeBaseImageUrl: string | null,
+  isDiaryCase: boolean,
+  baseImageSize: PreviewSize | null,
+): boolean {
+  const showBaseImage = Boolean(
+    activeBaseImageUrl && !(isDiaryCase && isClipSvgUrl(activeBaseImageUrl)),
+  )
+  return Boolean(
+    activeBaseImageUrl &&
+      !isClipSvgUrl(activeBaseImageUrl) &&
+      showBaseImage &&
+      baseImageSize,
+  )
+}
+
+function resolveCoverBounds(
+  coverMode: CoverMode,
   clipSize: PreviewSize,
   canvasSize: PreviewSize,
   clipMarkup?: string | null,
-): CanvasRect {
-  const viewBoxFallback = (): CanvasRect => {
-    const { scale, offsetX, offsetY } = computeGuideTransformParams(canvasSize, clipSize)
+): { bounds: CanvasRect; pathBBox: CanvasRect | null } {
+  if (coverMode === 'diary') {
     return {
-      x: offsetX,
-      y: offsetY,
-      width: clipSize.width * scale,
-      height: clipSize.height * scale,
+      bounds: { x: 0, y: 0, width: clipSize.width, height: clipSize.height },
+      pathBBox: null,
     }
   }
-  if (!clipMarkup?.trim()) return viewBoxFallback()
-  const pathBBox = measureSvgMarkupBBox(clipMarkup, clipSize)
-  if (!pathBBox) return viewBoxFallback()
-  return mapClipPathBBoxToCanvas(pathBBox, clipSize, canvasSize)
+  if (coverMode === 'case_clip') {
+    return {
+      bounds: viewBoxRectInCanvas(clipSize, canvasSize),
+      pathBBox: null,
+    }
+  }
+  const pathBBox = clipMarkup?.trim() ? measureSvgMarkupBBox(clipMarkup, clipSize) : null
+  if (!pathBBox) {
+    return {
+      bounds: { x: 0, y: 0, width: canvasSize.width, height: canvasSize.height },
+      pathBBox: null,
+    }
+  }
+  return {
+    bounds: mapClipPathBBoxToBaseCanvas(pathBBox, clipSize, canvasSize),
+    pathBBox,
+  }
 }
 
 function buildCoverTransformInRect(dst: CanvasRect, imageSize: PreviewSize): ImageTransform {
@@ -396,25 +443,17 @@ function buildCoverTransformInRect(dst: CanvasRect, imageSize: PreviewSize): Ima
   }
 }
 
-function buildCoverTransform(canvas: PreviewSize, imageSize: PreviewSize): ImageTransform {
-  return buildCoverTransformInRect({ x: 0, y: 0, width: canvas.width, height: canvas.height }, imageSize)
-}
-
-/** grip: print_area path bbox 基準。diary: clip viewBox 全体（従来どおり） */
+/** commerce mockup_compositor と同型の 3 分岐 cover（diary / base_image / case_clip） */
 function buildCommerceCoverTransform(
-  isDiaryCase: boolean,
+  coverMode: CoverMode,
   clipSize: PreviewSize,
   canvasSize: PreviewSize,
   imageSize: PreviewSize,
   clipMarkup?: string | null,
 ): ImageTransform {
-  if (isDiaryCase) {
-    return buildCoverTransform(clipSize, imageSize)
-  }
-  return buildCoverTransformInRect(
-    resolvePrintAreaBoundsInCanvas(clipSize, canvasSize, clipMarkup),
-    imageSize,
-  )
+  const { bounds, pathBBox } = resolveCoverBounds(coverMode, clipSize, canvasSize, clipMarkup)
+  logDebug('cover:transform', { coverMode, pathBBox, bounds, clipSize, canvasSize, imageSize })
+  return buildCoverTransformInRect(bounds, imageSize)
 }
 
 function buildDiaryCssMaskUrl(
@@ -555,19 +594,19 @@ function isPlacementReasonable(placement: BulkEmbedPlacement, canvas: PreviewSiz
 
 function resolveInitialTransform(
   savedPlacement: BulkEmbedPlacement | null | undefined,
-  isDiaryCase: boolean,
+  coverMode: CoverMode,
   clipSize: PreviewSize,
   canvas: PreviewSize,
   imageSize: PreviewSize,
   clipMarkup?: string | null,
 ): ImageTransform {
   if (!savedPlacement) {
-    return buildCommerceCoverTransform(isDiaryCase, clipSize, canvas, imageSize, clipMarkup)
+    return buildCommerceCoverTransform(coverMode, clipSize, canvas, imageSize, clipMarkup)
   }
   const remapped = remapPlacementToCanvas(savedPlacement, canvas)
   if (!isPlacementReasonable(remapped, canvas)) {
     logWarn('placement:invalid-fallback-to-cover', { savedPlacement, remapped, canvas })
-    return buildCommerceCoverTransform(isDiaryCase, clipSize, canvas, imageSize, clipMarkup)
+    return buildCommerceCoverTransform(coverMode, clipSize, canvas, imageSize, clipMarkup)
   }
   return transformFromPlacement(remapped)
 }
@@ -831,8 +870,10 @@ export function VerifyPreview({
       const isDiaryCase = spec?.product_type.code === 'diary-case'
       const clipSize = printAreaShape.viewBox
       const canvas = resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize)
+      const hasRenderableBase = computeHasRenderableBase(activeBaseImageUrl, isDiaryCase, baseImageSize)
+      const coverMode = resolveCoverMode(isDiaryCase, hasRenderableBase)
       const nextTransform = buildCommerceCoverTransform(
-        isDiaryCase,
+        coverMode,
         clipSize,
         canvas,
         size,
@@ -856,7 +897,7 @@ export function VerifyPreview({
       logError('file:readNaturalSize:failed', err)
       setFileError(err instanceof Error ? err.message : '画像を読み込めませんでした')
     }
-  }, [baseImageSize, clipId, imagePatternId, printAreaShape, spec])
+  }, [activeBaseImageUrl, baseImageSize, clipId, imagePatternId, printAreaShape, spec])
 
   const applyDesignImage = useCallback(
     async (url: string, abort?: { cancelled: boolean }) => {
@@ -874,11 +915,13 @@ export function VerifyPreview({
       const isDiaryCase = spec?.product_type.code === 'diary-case'
       const clipSize = printAreaShape.viewBox
       const canvas = resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize)
+      const hasRenderableBase = computeHasRenderableBase(activeBaseImageUrl, isDiaryCase, baseImageSize)
+      const coverMode = resolveCoverMode(isDiaryCase, hasRenderableBase)
       lastNaturalSizeRef.current = size
       const savedPlacement = skipInitialPlacementRef.current ? null : embedBulk?.initialPlacement
       const nextTransform = resolveInitialTransform(
         savedPlacement,
-        isDiaryCase,
+        coverMode,
         clipSize,
         canvas,
         size,
@@ -889,7 +932,14 @@ export function VerifyPreview({
       setTransform(nextTransform)
       setImageSourceLabel(labelFromImageUrl(url, embedBulk?.designLabel))
     },
-    [baseImageSize, embedBulk?.designLabel, embedBulk?.initialPlacement, printAreaShape, spec],
+    [
+      activeBaseImageUrl,
+      baseImageSize,
+      embedBulk?.designLabel,
+      embedBulk?.initialPlacement,
+      printAreaShape,
+      spec,
+    ],
   )
 
   useEffect(() => {
@@ -906,22 +956,27 @@ export function VerifyPreview({
     const isDiaryCase = spec?.product_type.code === 'diary-case'
     const clipSize = printAreaShape.viewBox
     const canvas = resolvePlacementCanvas(isDiaryCase, clipSize, baseImageSize)
+    const hasRenderableBase = computeHasRenderableBase(activeBaseImageUrl, isDiaryCase, baseImageSize)
+    const coverMode = resolveCoverMode(isDiaryCase, hasRenderableBase)
+    const { bounds, pathBBox } = resolveCoverBounds(
+      coverMode,
+      clipSize,
+      canvas,
+      printAreaShape.clipMarkup,
+    )
     skipInitialPlacementRef.current = true
-    const bounds = isDiaryCase
-      ? { x: 0, y: 0, width: clipSize.width, height: clipSize.height }
-      : resolvePrintAreaBoundsInCanvas(clipSize, canvas, printAreaShape.clipMarkup)
     setTransform(buildCoverTransformInRect(bounds, naturalSize))
     setFileError(null)
     logDebug('placement:reset-to-cover', {
+      coverMode,
+      hasRenderableBase,
       canvas,
       clipSize,
       bounds,
-      pathBBox: printAreaShape.clipMarkup
-        ? measureSvgMarkupBBox(printAreaShape.clipMarkup, clipSize)
-        : null,
+      pathBBox,
       naturalSize,
     })
-  }, [baseImageSize, imageUrl, printAreaShape, spec])
+  }, [activeBaseImageUrl, baseImageSize, imageUrl, printAreaShape, spec])
 
   useEffect(() => {
     const initialUrl = embedBulk?.initialDesignUrl?.trim()
@@ -1100,6 +1155,8 @@ export function VerifyPreview({
   }, [canvasSize, imageUrl, postToParent, transform, variant])
 
   const showBaseImage = Boolean(baseImageUrl && !(isDiaryCase && isClipSvgUrl(baseImageUrl)))
+  const hasRenderableBase = computeHasRenderableBase(baseImageUrl, isDiaryCase, baseImageSize)
+  const coverMode = resolveCoverMode(isDiaryCase, hasRenderableBase)
   const viewBoxAttr = canvasSize ? `0 0 ${canvasSize.width} ${canvasSize.height}` : undefined
   const guideParams =
     canvasSize && clipSize ? computeGuideTransformParams(canvasSize, clipSize) : null
@@ -1143,10 +1200,28 @@ export function VerifyPreview({
         clipViewBoxHeight: clipSize ? Math.round(clipSize.height * 100) / 100 : null,
         guideScale: needsLegacyGuideTransform ? Math.round(guideScale * 1000) / 1000 : 1,
         baseImageUrl,
+        hasRenderableBase,
+        coverMode,
       }
-  }, [baseImageUrl, canvasSize, clipSize, guideScale, needsLegacyGuideTransform, transform, variant])
+  }, [
+    baseImageUrl,
+    baseImageSize,
+    canvasSize,
+    clipSize,
+    coverMode,
+    guideScale,
+    hasRenderableBase,
+    isDiaryCase,
+    needsLegacyGuideTransform,
+    transform,
+    variant,
+  ])
 
   useEffect(() => {
+    const coverDebug =
+      canvasSize && clipSize
+        ? resolveCoverBounds(coverMode, clipSize, canvasSize, printAreaShape?.clipMarkup)
+        : null
     logDebug('render-state', {
       variant,
       clipId,
@@ -1160,6 +1235,10 @@ export function VerifyPreview({
       transform,
       baseImageUrl,
       baseImageSize,
+      hasRenderableBase,
+      coverMode,
+      pathBBox: coverDebug?.pathBBox ?? null,
+      bounds: coverDebug?.bounds ?? null,
       clipSize,
       canvasSize,
       viewBoxAttr,
@@ -1173,7 +1252,9 @@ export function VerifyPreview({
     canvasSize,
     clipId,
     clipSize,
+    coverMode,
     guideTransform,
+    hasRenderableBase,
     imageUrl,
     loading,
     placementInfo,
