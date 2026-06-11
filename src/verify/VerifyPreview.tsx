@@ -27,6 +27,8 @@ const IMAGE_MAX_SCALE = 4
 const MAX_IMAGE_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png'])
 const LOG_PREFIX = '[verify-preview]'
+/** Console でデプロイ確認用（Vercel push ごとに更新） */
+const BULK_PREVIEW_BUILD = '7827f5b-clip-layer-v2'
 
 type ImageTransform = {
   centerX: number
@@ -332,7 +334,6 @@ function computeClipLayerTransform(
   if (coverMode === 'base_image') {
     const sx = canvasSize.width / clipSize.width
     const sy = canvasSize.height / clipSize.height
-    if (Math.abs(sx - 1) < 1e-9 && Math.abs(sy - 1) < 1e-9) return undefined
     return `scale(${sx} ${sy})`
   }
   const { scale, offsetX, offsetY, needsTransform } = computeGuideTransformParams(
@@ -708,7 +709,7 @@ export function VerifyPreview({
   }, [transform])
 
   useEffect(() => {
-    logDebug('mounted', { variant, clipId })
+    logDebug('mounted', { variant, clipId, build: BULK_PREVIEW_BUILD })
     return () => logDebug('unmounted', { variant, clipId })
   }, [clipId, variant])
 
@@ -996,9 +997,11 @@ export function VerifyPreview({
     skipInitialPlacementRef.current = true
     setTransform(buildCoverTransformInRect(bounds, naturalSize))
     setFileError(null)
+    const resetClipTransform = computeClipLayerTransform(coverMode, clipSize, canvas)
     logDebug('placement:reset-to-cover', {
       coverMode,
       hasRenderableBase,
+      clipLayerTransform: resetClipTransform ?? null,
       canvas,
       clipSize,
       bounds,
@@ -1195,6 +1198,10 @@ export function VerifyPreview({
     canvasSize && clipSize
       ? computeClipLayerTransform(coverMode, clipSize, canvasSize)
       : undefined
+  const clipToCanvasScale =
+    canvasSize && clipSize
+      ? { sx: canvasSize.width / clipSize.width, sy: canvasSize.height / clipSize.height }
+      : null
 
   const transformAttr = transform
     ? `translate(${transform.centerX} ${transform.centerY}) rotate(${radToDeg(transform.rotationRad)}) scale(${transform.scale})`
@@ -1248,11 +1255,22 @@ export function VerifyPreview({
   ])
 
   useEffect(() => {
+    if (canvasSize && clipSize) {
+      logDebug('clip-layer-transform', {
+        build: BULK_PREVIEW_BUILD,
+        coverMode,
+        clipLayerTransform: clipLayerTransform ?? null,
+        clipToCanvasScale,
+        canvasSize,
+        clipSize,
+      })
+    }
     const coverDebug =
       canvasSize && clipSize
         ? resolveCoverBounds(coverMode, clipSize, canvasSize, printAreaShape?.clipMarkup)
         : null
     logDebug('render-state', {
+      build: BULK_PREVIEW_BUILD,
       variant,
       clipId,
       imagePatternId,
@@ -1273,6 +1291,7 @@ export function VerifyPreview({
       canvasSize,
       viewBoxAttr,
       clipLayerTransform,
+      clipToCanvasScale,
       transformAttr,
       placementInfo,
     })
@@ -1283,6 +1302,7 @@ export function VerifyPreview({
     clipId,
     clipSize,
     clipLayerTransform,
+    clipToCanvasScale,
     coverMode,
     hasRenderableBase,
     imageUrl,
