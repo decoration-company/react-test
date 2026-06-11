@@ -404,6 +404,21 @@ function remapPlacementToCanvas(
   }
 }
 
+function placementCanvasCoverage(placement: BulkEmbedPlacement, canvas: PreviewSize): number {
+  const halfW = (placement.imageWidth * placement.scale) / 2
+  const halfH = (placement.imageHeight * placement.scale) / 2
+  const iW = Math.max(
+    0,
+    Math.min(canvas.width, placement.centerX + halfW) - Math.max(0, placement.centerX - halfW),
+  )
+  const iH = Math.max(
+    0,
+    Math.min(canvas.height, placement.centerY + halfH) - Math.max(0, placement.centerY - halfH),
+  )
+  const canvasArea = canvas.width * canvas.height
+  return canvasArea > 0 ? (iW * iH) / canvasArea : 0
+}
+
 function isPlacementReasonable(placement: BulkEmbedPlacement, canvas: PreviewSize): boolean {
   if (
     !Number.isFinite(placement.centerX) ||
@@ -417,6 +432,7 @@ function isPlacementReasonable(placement: BulkEmbedPlacement, canvas: PreviewSiz
   }
   if (placement.imageWidth <= 0 || placement.imageHeight <= 0) return false
   if (placement.scale < IMAGE_MIN_SCALE || placement.scale > IMAGE_MAX_SCALE) return false
+  if (!placement.canvasWidth || !placement.canvasHeight) return false
 
   const visibleW = placement.imageWidth * placement.scale
   const visibleH = placement.imageHeight * placement.scale
@@ -425,7 +441,7 @@ function isPlacementReasonable(placement: BulkEmbedPlacement, canvas: PreviewSiz
   const margin = Math.max(canvas.width, canvas.height)
   if (placement.centerX < -margin || placement.centerX > canvas.width + margin) return false
   if (placement.centerY < -margin || placement.centerY > canvas.height + margin) return false
-  return true
+  return placementCanvasCoverage(placement, canvas) >= 0.25
 }
 
 function resolveInitialTransform(
