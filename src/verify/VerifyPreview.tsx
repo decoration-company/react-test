@@ -213,6 +213,59 @@ function toRenderableImageUrl(url: string): string {
   return resolveRemoteAssetUrl(url)
 }
 
+/**
+ * bulk embed: fetch して blob URL にする。SVG pattern / image の CORS・描画不具合を避ける。
+ */
+function useSvgImageHref(sourceUrl: string | null, useBlob: boolean): string | null {
+  const [blobHref, setBlobHref] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!sourceUrl) {
+      setBlobHref(null)
+      return
+    }
+    if (!useBlob) {
+      setBlobHref(null)
+      return
+    }
+    if (sourceUrl.startsWith('data:') || sourceUrl.startsWith('blob:')) {
+      setBlobHref(sourceUrl)
+      return
+    }
+
+    let revoked: string | null = null
+    let cancelled = false
+    const fetchUrl = toRenderableImageUrl(sourceUrl)
+    logDebug('svgImageHref:fetch:start', { fetchUrl: summarizeImageUrl(fetchUrl) })
+
+    fetch(fetchUrl)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.blob()
+      })
+      .then(blob => {
+        if (cancelled) return
+        const href = URL.createObjectURL(blob)
+        revoked = href
+        logDebug('svgImageHref:fetch:success', { fetchUrl: summarizeImageUrl(fetchUrl) })
+        setBlobHref(href)
+      })
+      .catch(err => {
+        logError('svgImageHref:fetch:failed', { fetchUrl: summarizeImageUrl(fetchUrl), err })
+        if (!cancelled) setBlobHref(null)
+      })
+
+    return () => {
+      cancelled = true
+      if (revoked) URL.revokeObjectURL(revoked)
+    }
+  }, [sourceUrl, useBlob])
+
+  if (!sourceUrl) return null
+  if (useBlob) return blobHref
+  return toRenderableImageUrl(sourceUrl)
+}
+
 function labelFromImageUrl(url: string, fallbackLabel?: string | null): string {
   const trimmed = url.trim()
   if (!trimmed) return fallbackLabel?.trim() || '（未設定）'
@@ -366,10 +419,8 @@ export function VerifyPreview({
   const [showBleedArea, setShowBleedArea] = useState(true)
 
   const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const renderImageUrl = useMemo(
-    () => (imageUrl ? toRenderableImageUrl(imageUrl) : null),
-    [imageUrl],
-  )
+  const embedLayout = Boolean(embedBulk)
+  const svgDesignHref = useSvgImageHref(imageUrl, embedLayout)
   const [transform, setTransform] = useState<ImageTransform | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [imageSourceLabel, setImageSourceLabel] = useState<string | null>(null)
@@ -384,10 +435,7 @@ export function VerifyPreview({
   const activeBaseImageUrl = spec
     ? spec.print_spec.base_image_url ?? deriveBaseImageUrl(spec.print_spec.print_area_svg_url)
     : null
-  const renderBaseImageUrl = useMemo(
-    () => (activeBaseImageUrl ? toRenderableImageUrl(activeBaseImageUrl) : null),
-    [activeBaseImageUrl],
-  )
+  const svgBaseHref = useSvgImageHref(activeBaseImageUrl, embedLayout)
   const baseImageSize = loadedBaseImage?.url === activeBaseImageUrl ? loadedBaseImage.size : null
 
   useEffect(() => {
@@ -955,7 +1003,6 @@ export function VerifyPreview({
   if (specError) return <p style={{ color: 'red' }}>Error: {specError}</p>
   if (!spec) return <p style={{ color: 'red' }}>spec not loaded</p>
 
-  const embedLayout = Boolean(embedBulk)
   const embedFitAspect =
     embedLayout && canvasSize
       ? `${canvasSize.width} / ${canvasSize.height}`
@@ -1121,9 +1168,9 @@ export function VerifyPreview({
                   : { width: '100%', position: useDiaryHtmlDesign ? 'relative' : undefined }
               }
             >
-              {useDiaryHtmlDesign && renderImageUrl && transform && diaryCssMaskUrl ? (
+              {useDiaryHtmlDesign && svgDesignHref && transform && diaryCssMaskUrl ? (
                 <img
-                  src={renderImageUrl}
+                  src={svgDesignHref}
                   alt=""
                   draggable={false}
                   data-verify-user-html-image="true"
@@ -1262,7 +1309,7 @@ export function VerifyPreview({
                   dangerouslySetInnerHTML={{ __html: printAreaShape.clipMarkup }}
                 />
               </clipPath>
-              {renderImageUrl && transform && transformAttr && (
+              {svgDesignHref && transform && transformAttr && !embedLayout && (
                 <pattern
                   id={imagePatternId}
                   patternUnits="userSpaceOnUse"
@@ -1274,7 +1321,7 @@ export function VerifyPreview({
                   <g transform={transformAttr}>
                     <image
                       data-verify-user-pattern-image="true"
-                      href={renderImageUrl}
+                      href={svgDesignHref}
                       x={-transform.imageWidth / 2}
                       y={-transform.imageHeight / 2}
                       width={transform.imageWidth}
@@ -1320,10 +1367,10 @@ export function VerifyPreview({
             )}
 
             {/* Base image */}
-            {showBaseImage && renderBaseImageUrl && (
+            {showBaseImage && svgBaseHref && (
               <image
                 data-verify-base-image="true"
-                href={renderBaseImageUrl}
+                href={svgBaseHref}
                 x="0"
                 y="0"
                 width={canvasSize.width}
@@ -1344,12 +1391,12 @@ export function VerifyPreview({
             ) : null}
 
             {/* User image clipped/masked to print area */}
-            {renderImageUrl && transform && transformAttr && !useDiaryHtmlDesign ? (
+            {svgDesignHref && transform && transformAttr && !useDiaryHtmlDesign ? (
               <g mask={diaryDesignMask} clipPath={gripDesignClip}>
                 <g transform={transformAttr}>
                   <image
                     data-verify-user-image="true"
-                    href={renderImageUrl}
+                    href={svgDesignHref}
                     x={-transform.imageWidth / 2}
                     y={-transform.imageHeight / 2}
                     width={transform.imageWidth}
@@ -1372,12 +1419,14 @@ export function VerifyPreview({
                     })}
                   />
                 </g>
-                <g
-                  data-verify-image-fill="true"
-                  className="verify-preview__image-fill"
-                  transform={guideTransform}
-                  dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
-                />
+                {!embedLayout ? (
+                  <g
+                    data-verify-image-fill="true"
+                    className="verify-preview__image-fill"
+                    transform={guideTransform}
+                    dangerouslySetInnerHTML={{ __html: printAreaShape.imageFillMarkup }}
+                  />
+                ) : null}
               </g>
             ) : null}
 
