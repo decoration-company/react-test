@@ -378,6 +378,70 @@ function transformFromPlacement(placement: BulkEmbedPlacement): ImageTransform {
   }
 }
 
+function remapPlacementToCanvas(
+  placement: BulkEmbedPlacement,
+  canvas: PreviewSize,
+): BulkEmbedPlacement {
+  const srcW = placement.canvasWidth ?? canvas.width
+  const srcH = placement.canvasHeight ?? canvas.height
+  if (srcW <= 0 || srcH <= 0) {
+    return { ...placement, canvasWidth: canvas.width, canvasHeight: canvas.height }
+  }
+  if (srcW === canvas.width && srcH === canvas.height) {
+    return { ...placement, canvasWidth: canvas.width, canvasHeight: canvas.height }
+  }
+  const sx = canvas.width / srcW
+  const sy = canvas.height / srcH
+  return {
+    centerX: placement.centerX * sx,
+    centerY: placement.centerY * sy,
+    imageWidth: placement.imageWidth * sx,
+    imageHeight: placement.imageHeight * sy,
+    scale: placement.scale,
+    rotationRad: placement.rotationRad,
+    canvasWidth: canvas.width,
+    canvasHeight: canvas.height,
+  }
+}
+
+function isPlacementReasonable(placement: BulkEmbedPlacement, canvas: PreviewSize): boolean {
+  if (
+    !Number.isFinite(placement.centerX) ||
+    !Number.isFinite(placement.centerY) ||
+    !Number.isFinite(placement.imageWidth) ||
+    !Number.isFinite(placement.imageHeight) ||
+    !Number.isFinite(placement.scale) ||
+    !Number.isFinite(placement.rotationRad)
+  ) {
+    return false
+  }
+  if (placement.imageWidth <= 0 || placement.imageHeight <= 0) return false
+  if (placement.scale < IMAGE_MIN_SCALE || placement.scale > IMAGE_MAX_SCALE) return false
+
+  const visibleW = placement.imageWidth * placement.scale
+  const visibleH = placement.imageHeight * placement.scale
+  if (visibleW < canvas.width * 0.03 || visibleH < canvas.height * 0.03) return false
+
+  const margin = Math.max(canvas.width, canvas.height)
+  if (placement.centerX < -margin || placement.centerX > canvas.width + margin) return false
+  if (placement.centerY < -margin || placement.centerY > canvas.height + margin) return false
+  return true
+}
+
+function resolveInitialTransform(
+  savedPlacement: BulkEmbedPlacement | null | undefined,
+  canvas: PreviewSize,
+  imageSize: PreviewSize,
+): ImageTransform {
+  if (!savedPlacement) return buildCoverTransform(canvas, imageSize)
+  const remapped = remapPlacementToCanvas(savedPlacement, canvas)
+  if (!isPlacementReasonable(remapped, canvas)) {
+    logWarn('placement:invalid-fallback-to-cover', { savedPlacement, remapped, canvas })
+    return buildCoverTransform(canvas, imageSize)
+  }
+  return transformFromPlacement(remapped)
+}
+
 export type BulkCellSaveMessage = {
   type: 'decocom:bulk-cell:save'
   variant: string
@@ -429,6 +493,9 @@ export function VerifyPreview({
   const svgRef = useRef<SVGSVGElement | null>(null)
   /** ユーザーが「画像を変更」したあと、baseImage 読込で initialDesignUrl を上書きしない */
   const userOverrodeImageRef = useRef(false)
+  /** 「配置をリセット」後は initialPlacement を無視する */
+  const skipInitialPlacementRef = useRef(false)
+  const lastNaturalSizeRef = useRef<PreviewSize | null>(null)
   const pointersRef = useRef(new Map<number, DOMPoint>())
   const gestureRef = useRef<GestureState | null>(null)
   const transformRef = useRef<ImageTransform | null>(null)
@@ -669,11 +736,9 @@ export function VerifyPreview({
       }
       const isDiaryCase = spec?.product_type.code === 'diary-case'
       const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
-      const savedPlacement = embedBulk?.initialPlacement
-      const nextTransform =
-        savedPlacement != null
-          ? transformFromPlacement(savedPlacement)
-          : buildCoverTransform(canvas, size)
+      lastNaturalSizeRef.current = size
+      const savedPlacement = skipInitialPlacementRef.current ? null : embedBulk?.initialPlacement
+      const nextTransform = resolveInitialTransform(savedPlacement, canvas, size)
       if (abort?.cancelled) return
       setImageUrl(url)
       setTransform(nextTransform)
@@ -684,8 +749,22 @@ export function VerifyPreview({
 
   useEffect(() => {
     userOverrodeImageRef.current = false
+    skipInitialPlacementRef.current = false
+    lastNaturalSizeRef.current = null
     setImageSourceLabel(null)
   }, [variant, embedBulk?.initialDesignUrl, embedBulk?.initialPlacement])
+
+  const handleResetPlacement = useCallback(() => {
+    if (!printAreaShape || !imageUrl) return
+    const naturalSize = lastNaturalSizeRef.current
+    if (!naturalSize) return
+    const isDiaryCase = spec?.product_type.code === 'diary-case'
+    const canvas = resolvePlacementCanvas(isDiaryCase, printAreaShape.viewBox, baseImageSize)
+    skipInitialPlacementRef.current = true
+    setTransform(buildCoverTransform(canvas, naturalSize))
+    setFileError(null)
+    logDebug('placement:reset-to-cover', { canvas, naturalSize })
+  }, [baseImageSize, imageUrl, printAreaShape, spec])
 
   useEffect(() => {
     const initialUrl = embedBulk?.initialDesignUrl?.trim()
@@ -1063,6 +1142,24 @@ export function VerifyPreview({
                 />
                 画像を変更
               </label>
+              {imageUrl && transform ? (
+                <button
+                  type="button"
+                  onClick={handleResetPlacement}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: 8,
+                    border: '1px solid #8c9196',
+                    background: '#fff',
+                    color: '#303030',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  配置をリセット
+                </button>
+              ) : null}
               {imageSourceLabel ? (
                 <p style={{ margin: 0, fontSize: 12, color: '#616161' }}>
                   使用中: <strong style={{ color: '#303030' }}>{imageSourceLabel}</strong>
