@@ -14,3 +14,13 @@ html.bulk-embed #root {
   border: none;
   text-align: left;
 }
+
+/* プレビュー枠: 縦横どちらが先に溢れてもケース全体が収まる */
+html.bulk-embed .verify-preview-embed-slot {
+  container-type: size;
+}
+
+html.bulk-embed .verify-preview-embed-canvas {
+  width: min(100cqw, calc(100cqh * var(--embed-ar, 1)));
+  height: min(100cqh, calc(100cqw / var(--embed-ar, 1)));
+}

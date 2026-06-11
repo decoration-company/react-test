@@ -1055,6 +1055,7 @@ export function VerifyPreview({
       {/* SVG Preview */}
       {printAreaShape && canvasSize && viewBoxAttr && (
         <div
+          className={embedLayout ? 'verify-preview-embed-slot' : undefined}
           style={{
             flex: embedLayout ? 1 : undefined,
             minHeight: embedLayout ? 0 : undefined,
@@ -1062,13 +1063,14 @@ export function VerifyPreview({
             alignItems: embedLayout ? 'center' : undefined,
             justifyContent: embedLayout ? 'center' : undefined,
             width: '100%',
+            overflow: embedLayout ? 'hidden' : undefined,
           }}
         >
           <div
             style={{
               border: isClearHardCase ? 'none' : '1px solid #ddd',
               borderRadius: 8,
-              overflow: embedLayout ? 'visible' : 'hidden',
+              overflow: 'hidden',
               background: isClearHardCase ? 'transparent' : '#f0f0f0',
               width: embedLayout ? '100%' : undefined,
               flex: embedLayout ? 1 : undefined,
@@ -1083,16 +1085,22 @@ export function VerifyPreview({
             }}
           >
             <div
+              className={embedLayout && embedFitAspect ? 'verify-preview-embed-canvas' : undefined}
               style={
                 embedFitAspect
                   ? {
                       aspectRatio: embedFitAspect,
-                      width: '100%',
-                      height: 'auto',
                       maxWidth: '100%',
                       maxHeight: '100%',
                       flexShrink: 0,
                       position: useDiaryHtmlDesign ? 'relative' : undefined,
+                      ...(embedLayout && canvasSize
+                        ? {
+                            ['--embed-ar' as string]: String(
+                              canvasSize.width / canvasSize.height,
+                            ),
+                          }
+                        : { width: '100%', height: 'auto' }),
                     }
                   : { width: '100%', position: useDiaryHtmlDesign ? 'relative' : undefined }
               }
@@ -1129,9 +1137,9 @@ export function VerifyPreview({
             style={{
               display: 'block',
               width: '100%',
-              height: embedLayout ? (useDiaryHtmlDesign ? '100%' : 'auto') : undefined,
+              height: embedLayout ? '100%' : undefined,
               margin: '0 auto',
-              maxHeight: embedLayout ? undefined : '70vh',
+              maxHeight: embedLayout ? '100%' : '70vh',
               touchAction: 'none',
               position: useDiaryHtmlDesign ? 'absolute' : undefined,
               inset: useDiaryHtmlDesign ? 0 : undefined,
