@@ -431,13 +431,13 @@ function resolveCoverBounds(
   }
 }
 
-function buildCoverTransformInRect(dst: CanvasRect, imageSize: PreviewSize): ImageTransform {
-  const coverScale = Math.max(dst.width / imageSize.width, dst.height / imageSize.height)
+/** commerce _draw_image_cover 相当 — dst 矩形に xMidYMid slice（中央クロップ）でフィット */
+function buildCoverTransformInRect(dst: CanvasRect, _imageSize: PreviewSize): ImageTransform {
   return {
     centerX: dst.x + dst.width / 2,
     centerY: dst.y + dst.height / 2,
-    imageWidth: imageSize.width * coverScale,
-    imageHeight: imageSize.height * coverScale,
+    imageWidth: dst.width,
+    imageHeight: dst.height,
     scale: 1,
     rotationRad: 0,
   }
@@ -452,8 +452,17 @@ function buildCommerceCoverTransform(
   clipMarkup?: string | null,
 ): ImageTransform {
   const { bounds, pathBBox } = resolveCoverBounds(coverMode, clipSize, canvasSize, clipMarkup)
-  logDebug('cover:transform', { coverMode, pathBBox, bounds, clipSize, canvasSize, imageSize })
-  return buildCoverTransformInRect(bounds, imageSize)
+  const transform = buildCoverTransformInRect(bounds, imageSize)
+  logDebug('cover:transform', {
+    coverMode,
+    pathBBox,
+    bounds,
+    clipSize,
+    canvasSize,
+    imageSize,
+    transform,
+  })
+  return transform
 }
 
 function buildDiaryCssMaskUrl(
@@ -1659,10 +1668,10 @@ export function VerifyPreview({
                       href={svgDesignHref}
                       x={-transform.imageWidth / 2}
                       y={-transform.imageHeight / 2}
-                      width={transform.imageWidth}
-                      height={transform.imageHeight}
-                      preserveAspectRatio="none"
-                      onLoad={() => logDebug('user-pattern-image:onLoad', {
+                    width={transform.imageWidth}
+                    height={transform.imageHeight}
+                    preserveAspectRatio="xMidYMid slice"
+                    onLoad={() => logDebug('user-pattern-image:onLoad', {
                         imageUrl: summarizeImageUrl(imageUrl),
                         transform,
                         transformAttr,
@@ -1736,7 +1745,7 @@ export function VerifyPreview({
                     y={-transform.imageHeight / 2}
                     width={transform.imageWidth}
                     height={transform.imageHeight}
-                    preserveAspectRatio="none"
+                    preserveAspectRatio="xMidYMid slice"
                     onLoad={() => logDebug('user-image-element:onLoad', {
                       imageUrl: summarizeImageUrl(imageUrl),
                       transform,
