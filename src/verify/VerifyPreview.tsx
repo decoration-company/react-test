@@ -11,6 +11,7 @@ import {
 } from 'react'
 import { fetchPrintSpec, type PrintSpec } from './fetchPrintSpec'
 import { parseHardCaseColorFromVariant } from '../lib/hardCaseColor'
+import { resolveRemoteAssetUrl } from '../lib/resolveRemoteAssetUrl'
 import {
   fetchAndParseDiaryCaseClip,
   fetchAndParseGripCaseClip,
@@ -206,6 +207,12 @@ function summarizeImageUrl(url: string | null): Record<string, unknown> | null {
   }
 }
 
+/** Sakura 等 CORS 非対応ホストは commerce プロキシ経由で SVG / canvas に載せる */
+function toRenderableImageUrl(url: string): string {
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url
+  return resolveRemoteAssetUrl(url)
+}
+
 function labelFromImageUrl(url: string, fallbackLabel?: string | null): string {
   const trimmed = url.trim()
   if (!trimmed) return fallbackLabel?.trim() || '（未設定）'
@@ -359,6 +366,10 @@ export function VerifyPreview({
   const [showBleedArea, setShowBleedArea] = useState(true)
 
   const [imageUrl, setImageUrl] = useState<string | null>(null)
+  const renderImageUrl = useMemo(
+    () => (imageUrl ? toRenderableImageUrl(imageUrl) : null),
+    [imageUrl],
+  )
   const [transform, setTransform] = useState<ImageTransform | null>(null)
   const [fileError, setFileError] = useState<string | null>(null)
   const [imageSourceLabel, setImageSourceLabel] = useState<string | null>(null)
@@ -593,7 +604,7 @@ export function VerifyPreview({
   const applyDesignImage = useCallback(
     async (url: string, abort?: { cancelled: boolean }) => {
       setFileError(null)
-      const size = await readNaturalSize(url)
+      const size = await readNaturalSize(toRenderableImageUrl(url))
       if (abort?.cancelled) return
       if (!printAreaShape) {
         setFileError('印刷エリアの読み込み後にもう一度お試しください。')
@@ -1105,9 +1116,9 @@ export function VerifyPreview({
                   : { width: '100%', position: useDiaryHtmlDesign ? 'relative' : undefined }
               }
             >
-              {useDiaryHtmlDesign && imageUrl && transform && diaryCssMaskUrl ? (
+              {useDiaryHtmlDesign && renderImageUrl && transform && diaryCssMaskUrl ? (
                 <img
-                  src={imageUrl}
+                  src={renderImageUrl}
                   alt=""
                   draggable={false}
                   data-verify-user-html-image="true"
@@ -1246,7 +1257,7 @@ export function VerifyPreview({
                   dangerouslySetInnerHTML={{ __html: printAreaShape.clipMarkup }}
                 />
               </clipPath>
-              {imageUrl && transform && transformAttr && (
+              {renderImageUrl && transform && transformAttr && (
                 <pattern
                   id={imagePatternId}
                   patternUnits="userSpaceOnUse"
@@ -1258,7 +1269,8 @@ export function VerifyPreview({
                   <g transform={transformAttr}>
                     <image
                       data-verify-user-pattern-image="true"
-                      href={imageUrl}
+                      href={renderImageUrl}
+                      crossOrigin="anonymous"
                       x={-transform.imageWidth / 2}
                       y={-transform.imageHeight / 2}
                       width={transform.imageWidth}
@@ -1328,12 +1340,13 @@ export function VerifyPreview({
             ) : null}
 
             {/* User image clipped/masked to print area */}
-            {imageUrl && transform && transformAttr && !useDiaryHtmlDesign ? (
+            {renderImageUrl && transform && transformAttr && !useDiaryHtmlDesign ? (
               <g mask={diaryDesignMask} clipPath={gripDesignClip}>
                 <g transform={transformAttr}>
                   <image
                     data-verify-user-image="true"
-                    href={imageUrl}
+                    href={renderImageUrl}
+                    crossOrigin="anonymous"
                     x={-transform.imageWidth / 2}
                     y={-transform.imageHeight / 2}
                     width={transform.imageWidth}
